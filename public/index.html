@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pose Landmarks (Webcam)</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Pose Landmarks (Webcam)</h1>
+      <div class="controls">
+        <button id="startBtn">Enable Camera</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <label>
+          <input type="checkbox" id="mirrorToggle" checked /> Mirror
+        </label>
+        <label>
+          Model:
+          <select id="modelComplexity">
+            <option value="0">Lite</option>
+            <option value="1" selected>Full</option>
+            <option value="2">Heavy</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="stage">
+        <div class="canvas-wrap">
+          <video id="video" playsinline></video>
+          <canvas id="output"></canvas>
+        </div>
+      </section>
+      <aside class="panel">
+        <h2>Status</h2>
+        <ul class="stats">
+          <li><strong>Camera:</strong> <span id="camStatus">idle</span></li>
+          <li><strong>FPS:</strong> <span id="fps">0</span></li>
+          <li><strong>Detected:</strong> <span id="detected">no</span></li>
+          <li><strong>Landmarks:</strong> <span id="landmarkCount">0</span></li>
+        </ul>
+        <h3>Metrics</h3>
+        <ul class="stats">
+          <li><strong>Elbow L/R (°):</strong> <span id="angleElbowL">—</span> / <span id="angleElbowR">—</span></li>
+          <li><strong>Knee L/R (°):</strong> <span id="angleKneeL">—</span> / <span id="angleKneeR">—</span></li>
+          <li><strong>Torso angle (°):</strong> <span id="angleTorso">—</span></li>
+          <li><strong>Avg visibility:</strong> <span id="avgVis">—</span></li>
+          <li><strong>Shoulder L/R (°):</strong> <span id="angleShoulderL">—</span> / <span id="angleShoulderR">—</span></li>
+          <li><strong>Hip L/R (°):</strong> <span id="angleHipL">—</span> / <span id="angleHipR">—</span></li>
+          <li><strong>Δ Shoulder Y (%):</strong> <span id="deltaShoulderY">—</span></li>
+          <li><strong>Δ Hip Y (%):</strong> <span id="deltaHipY">—</span></li>
+          <li><strong>BBox (w×h %):</strong> <span id="bbox">—</span></li>
+          <li><strong>Posture:</strong> <span id="posture">—</span></li>
+          <li><strong>Symmetry (shoulder/knee Δ°):</strong> <span id="symShoulder">—</span> / <span id="symKnee">—</span></li>
+        </ul>
+        <h3>Reps</h3>
+        <div class="controls" style="margin: 6px 0 10px;">
+          <label>
+            Mode:
+            <select id="repMode">
+              <option value="none" selected>None</option>
+              <option value="curlL">Bicep Curl (Left)</option>
+              <option value="curlR">Bicep Curl (Right)</option>
+              <option value="squat">Squat</option>
+              <option value="pushup">Push-up</option>
+              <option value="jack">Jumping Jack</option>
+            </select>
+          </label>
+        </div>
+        <ul class="stats">
+          <li><strong>Stage:</strong> <span id="repStage">—</span></li>
+          <li><strong>Count:</strong> <span id="repCount">0</span></li>
+        </ul>
+        <h3>Sample points</h3>
+        <div class="samples" id="samples"></div>
+        <p class="hint">Tip: Click "Enable Camera" to grant permission. This runs entirely in your browser.</p>
+      </aside>
+    </main>
+
+    <!-- MediaPipe JS libraries via CDN (legacy solution API for simplicity) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <script src="app.js" type="module"></script>
+  </body>
+  </html>
