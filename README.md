@@ -23,7 +23,9 @@ Option B: Node http-server (if you have Node.js)
 
 ```bash
 npm -g install http-server
-cd web/public
+npm install
+npm run build
+npm dev run 
 http-server -p 8080 --cors
 # Open http://localhost:8080
 ```
