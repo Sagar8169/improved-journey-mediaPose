@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #0D1117;
+    --panel: #161B22;
+    --text: #F0F6FC;
+    --accent: #58A6FF;
+  /* Safe area insets for mobile devices with notches */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100svh;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-tap-highlight-color: rgba(88,166,255,0.15);
+    touch-action: manipulation;
+    overscroll-behavior-y: none;
+  }
+/* Responsive container utility for mobile gutters */
+.container-mobile {
+  width: 100%;
+  max-width: 100vw;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 640px) {
+  .container-mobile {
+    max-width: 640px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .container-mobile {
+    max-width: 1024px;
+  }
+}
+
+/* Make all buttons and inputs at least 44px tall for mobile tap targets */
+button, input[type="submit"], .btn-accent {
+  min-height: 44px;
+  font-size: 1rem;
+}
+input, select, textarea {
+  min-height: 44px;
+  font-size: 1rem;
+}
+}
+
+/* Accent utilities */
+.btn-accent {
+  background:#58A6FF;
+  color:#0D1117;
+  font-weight:500;
+  border-radius:0.75rem;
+  transition:background .18s ease, box-shadow .18s ease;
+}
+.btn-accent:hover { background:#3392ff; }
+.btn-accent:disabled { opacity:.55; cursor:not-allowed; }
+
+.border-panel { border-color:#1F242C; }
+.bg-panel { background:#161B22; }
+.text-accent { color:#58A6FF; }
+.ring-accent:focus { outline:2px solid #58A6FF; outline-offset:2px; }
+
+/* Safe-area helpers */
+.safe-top { padding-top: max(0px, var(--safe-top)); }
+.safe-bottom { padding-bottom: max(0px, var(--safe-bottom)); }
+
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: #0D1117; }
+::-webkit-scrollbar-thumb { background: #1f2933; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #273444; }
