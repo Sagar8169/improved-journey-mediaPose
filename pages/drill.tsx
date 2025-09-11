@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { RequireAuth } from '@/components/RequireAuth';
 import { usePoseStore } from '@/components/usePoseStore';
 import { useAuthStore } from '@/components/authStore';
 import { useRouter } from 'next/router';
+import { createPortal } from 'react-dom';
 
 // Lazy-load mediapipe libs (browser only)
 const loadPoseStack = () => Promise.all([
@@ -55,6 +56,60 @@ export default function DrillPage() {
   const lastPostureIssueTs = useRef<number>(0);
   const modulesLoadedRef = useRef(false);
 
+  // ---------------- Control Menu State ----------------
+  type Skill = 'Beginner' | 'Intermediate' | 'Advanced' | 'Competition-Level' | 'Custom';
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [skill, setSkill] = useState<Skill>('Intermediate');
+  // Focus areas
+  const attackDefault = { Mount:false, 'Back Control':false, 'Side Control':false, 'Knee-on-Belly':false, 'North-South':false, 'Guard (Attacking Guard)':false } as const;
+  const defenseDefault = { 'Bottom Mount':false, 'Back Mount (Back Control)':false, 'Bottom Side Control':false, 'Bottom Knee-on-Belly':false, 'Bottom North-South':false, 'Turtle Position':false, 'Bottom of a Takedown Attempt':false, 'Guard (Defensive Guard Under Strikes)':false } as const;
+  const [focusAttack, setFocusAttack] = useState<{[K in keyof typeof attackDefault]: boolean}>({...attackDefault});
+  const [focusDefense, setFocusDefense] = useState<{[K in keyof typeof defenseDefault]: boolean}>({...defenseDefault});
+  const focusAllSelected = useMemo(()=> Object.values(focusAttack).every(Boolean) && Object.values(focusDefense).every(Boolean), [focusAttack, focusDefense]);
+  const toggleFocusAll = (value: boolean) => { setFocusAttack(Object.fromEntries(Object.keys(attackDefault).map(k=>[k, value])) as any); setFocusDefense(Object.fromEntries(Object.keys(defenseDefault).map(k=>[k, value])) as any); };
+  // Voice cues
+  type CueType = 'Technical Guidance' | 'Positional Prompts' | 'Motivational Coaching';
+  type CueFreq = 'Smart Mode' | 'Every 30 Seconds' | 'Only on Position Change' | 'End of Round Only';
+  type CueStyle = 'Neutral Instructor' | 'Encouraging Coach' | 'Quiet Mode';
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [cueType, setCueType] = useState<CueType>('Technical Guidance');
+  const [cueFreq, setCueFreq] = useState<CueFreq>('Smart Mode');
+  const [cueStyle, setCueStyle] = useState<CueStyle>('Neutral Instructor');
+  // Training goals
+  const goalsDefault = { 'Improve Submissions':false, 'Escape Bad Positions':false, 'Sharpen Transitions':false, 'Build Positional Control':false, 'Prepare for Sparring or Competition':false, 'Self-Defense Fundamentals':false } as const;
+  const [goals, setGoals] = useState<{[K in keyof typeof goalsDefault]: boolean}>({...goalsDefault});
+  const goalsAllSelected = useMemo(()=> Object.values(goals).every(Boolean), [goals]);
+  const toggleGoalsAll = (value:boolean) => setGoals(Object.fromEntries(Object.keys(goalsDefault).map(k=>[k, value])) as any);
+
+  // Voice synthesis helper
+  const speak = (text: string) => {
+    if (!voiceEnabled) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    switch(cueStyle){
+      case 'Neutral Instructor': utter.rate = 1.0; utter.pitch = 1.0; break;
+      case 'Encouraging Coach': utter.rate = 1.05; utter.pitch = 1.1; break;
+      case 'Quiet Mode': utter.rate = 0.95; utter.pitch = 0.95; break;
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  };
+
+  // Derive model and thresholds from skill level
+  const skillDerived = useMemo(()=>{
+    switch(skill){
+      case 'Beginner': return { mc: 0 as 0|1|2, det: 0.4, track: 0.4, curlUp: 45, curlDown: 160, squatDown: 100, pushDown: 85 };
+      case 'Intermediate': return { mc: 1 as 0|1|2, det: 0.5, track: 0.5, curlUp: 40, curlDown: 160, squatDown: 100, pushDown: 80 };
+      case 'Advanced': return { mc: 1 as 0|1|2, det: 0.6, track: 0.6, curlUp: 35, curlDown: 165, squatDown: 95, pushDown: 75 };
+      case 'Competition-Level': return { mc: 2 as 0|1|2, det: 0.7, track: 0.7, curlUp: 30, curlDown: 170, squatDown: 90, pushDown: 70 };
+      case 'Custom': default: return { mc: (modelComplexity as 0|1|2), det: 0.5, track: 0.5, curlUp: 40, curlDown: 160, squatDown: 100, pushDown: 80 };
+    }
+  }, [skill, modelComplexity]);
+
+  const applyPoseOptions = (p: any) => {
+    try { p.setOptions({ modelComplexity: skillDerived.mc, minDetectionConfidence: skillDerived.det, minTrackingConfidence: skillDerived.track }); } catch {}
+  };
+
   // metrics helpers
   const angle = (a?: number[], b?: number[], c?: number[]) => {
     if (!a || !b || !c) return undefined;
@@ -86,18 +141,18 @@ export default function DrillPage() {
       drawUtilsRef.current = { drawConnectors, drawLandmarks, POSE_CONNECTIONS };
       const p = new Pose({ locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
       p.setOptions({
-        modelComplexity: modelComplexity as 0|1|2,
+        modelComplexity: skillDerived.mc,
         smoothLandmarks: true,
         enableSegmentation: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        minDetectionConfidence: skillDerived.det,
+        minTrackingConfidence: skillDerived.track,
       });
       p.onResults(onResults);
       poseRef.current = p;
       modulesLoadedRef.current = true;
     } else {
       // update model complexity if changed during pause
-      try { poseRef.current.setOptions({ modelComplexity: modelComplexity as 0|1|2 }); } catch {}
+  try { applyPoseOptions(poseRef.current); } catch {}
     }
     // Always recreate camera after pause
     const { Camera } = (await import('@mediapipe/camera_utils')) as any;
@@ -112,7 +167,7 @@ export default function DrillPage() {
     if (!sessionActiveRef.current) {
       store.startSession(); // legacy simple summary
       if (currentUser) {
-        store.startSessionTracking(currentUser.email, modelComplexity as 0|1|2, mirror);
+        store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
       }
       postureStartRef.current = store.postureIssues;
       sessionActiveRef.current = true;
@@ -133,6 +188,11 @@ export default function DrillPage() {
     streamRef.current = null;
     setRunning(false);
     if (final && sessionActiveRef.current) {
+      // End-of-round voice cue
+      if (voiceEnabled && cueFreq === 'End of Round Only') {
+        const msg = cueType === 'Motivational Coaching' ? `Round complete. ${repCount} reps. Great work.` : cueType === 'Positional Prompts' ? `Round complete. Review your control and transitions.` : `Round complete. Reps: ${repCount}. Check posture notes.`;
+        speak(msg);
+      }
       const postureDelta = store.postureIssues - postureStartRef.current;
       const rec = store.finalizeSession({ reps: repCount, postureIssuesDelta: postureDelta });
       const detailed = store.endSessionTracking();
@@ -240,6 +300,10 @@ export default function DrillPage() {
       if (nowTs - lastPostureIssueTs.current > 1000) { // 1s cooldown
         store.recordPostureIssue();
         lastPostureIssueTs.current = nowTs;
+        if (voiceEnabled && (cueFreq === 'Smart Mode' || cueFreq === 'Only on Position Change')) {
+          const msg = cueType === 'Motivational Coaching' ? 'Chest up, you got this.' : 'Keep your back tall and neutral.';
+          speak(msg);
+        }
       }
     }
 
@@ -249,12 +313,17 @@ export default function DrillPage() {
       if (inc) {
         setRepCount(c=>{ store.addReps(1); return c+1; });
         store.updateFrameMetrics({ hasPose: true, repMode: repMode !== 'none'? repMode: undefined, repIncrement: true });
+        // Smart/position voice feedback on rep increment
+        if (voiceEnabled && (cueFreq === 'Smart Mode' || cueFreq === 'Only on Position Change')) {
+          const msg = cueType === 'Motivational Coaching' ? 'Nice rep, keep tempo steady.' : cueType === 'Positional Prompts' ? 'Finish strong, lock the position.' : 'Control your form on the way up.';
+          speak(msg);
+        }
       }
     };
 
-    const curlLogic = (a?: number) => { if(a==null) return; if(a>160) updateRep('down', false); if(a<40 && repStage==='down') updateRep('up', true); };
-    const squatLogic = (k?: number) => { if(k==null) return; if(k>160) updateRep('up', false); if(k<100 && repStage==='up') updateRep('down', true); };
-    const pushupLogic = (elL?: number, elR?: number) => { const a = (elL!=null && elR!=null) ? (elL+elR)/2 : (elL ?? elR); if(a==null)return; if(a>160) updateRep('up', false); if(a<80 && repStage==='up') updateRep('down', true); };
+    const curlLogic = (a?: number) => { if(a==null) return; if(a>skillDerived.curlDown) updateRep('down', false); if(a<skillDerived.curlUp && repStage==='down') updateRep('up', true); };
+    const squatLogic = (k?: number) => { if(k==null) return; if(k>160) updateRep('up', false); if(k<skillDerived.squatDown && repStage==='up') updateRep('down', true); };
+    const pushupLogic = (elL?: number, elR?: number) => { const a = (elL!=null && elR!=null) ? (elL+elR)/2 : (elL ?? elR); if(a==null)return; if(a>160) updateRep('up', false); if(a<skillDerived.pushDown && repStage==='up') updateRep('down', true); };
     const jackLogic = (lW?: number[], rW?: number[], lA?: number[], rA?: number[]) => {
       if(!lW||!rW||!lA||!rA) return; const handsUp = (lW[1] < (lShoulder?.[1] ?? 0.5)) && (rW[1] < (rShoulder?.[1] ?? 0.5)); const feetApart = Math.abs(lA[0]-rA[0])>0.3; if(handsUp && feetApart){ if(repStage!=='open') updateRep('open', false);} else { if(repStage==='open') updateRep('closed', true);} };
 
@@ -302,7 +371,21 @@ export default function DrillPage() {
   };
 
   useEffect(()=>{ return ()=>{ stop(); }; },[]);
-  useEffect(()=>{ if(poseRef.current){ poseRef.current.setOptions({ modelComplexity }); } },[modelComplexity]);
+  useEffect(()=>{ if(poseRef.current){ try { poseRef.current.setOptions({ modelComplexity: skillDerived.mc, minDetectionConfidence: skillDerived.det, minTrackingConfidence: skillDerived.track }); } catch {} } },[skillDerived]);
+  // Scroll lock when controls modal is open
+  useEffect(()=>{
+    if (typeof document === 'undefined') return;
+    const prev = document.body.style.overflow;
+    if (controlsOpen) document.body.style.overflow = 'hidden';
+    return ()=> { document.body.style.overflow = prev; };
+  }, [controlsOpen]);
+  // Close modal on Escape
+  useEffect(()=>{
+    if (!controlsOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setControlsOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return ()=> window.removeEventListener('keydown', onKey);
+  }, [controlsOpen]);
 
   // Show a technique suggestion overlay (large, readable) for a few seconds
   const showSuggestion = (text: string) => {
@@ -331,9 +414,12 @@ export default function DrillPage() {
   useEffect(()=>{
     if(!running) return;
     if(repMode==='none' && detected && posture==='neutral' && !suggestion){
-      showSuggestion('Try back take from here');
+      const focusSelected = Object.entries({ ...focusAttack, ...focusDefense }).filter(([,v])=>v).map(([k])=>k);
+      const goalSelected = Object.entries(goals).filter(([,v])=>v).map(([k])=>k);
+      const hint = focusSelected[0] || goalSelected[0] || 'transition to back control';
+      showSuggestion(typeof hint === 'string' ? `Consider a ${hint}` : 'Try back take from here');
     }
-  },[repMode, detected, posture, running, suggestion]);
+  },[repMode, detected, posture, running, suggestion, focusAttack, focusDefense, goals]);
 
   // Cleanup timeout on unmount
   useEffect(()=>()=>{ if(suggestionTimeoutRef.current) window.clearTimeout(suggestionTimeoutRef.current); },[]);
@@ -341,6 +427,37 @@ export default function DrillPage() {
   // position detection placeholder (future extension for grappling positions)
   const currentPosition = detected ? 'ACTIVE' : 'IDLE';
   const feedback = posture.includes('leaning') ? 'Posture adjustment needed' : (detected ? 'Good alignment' : 'No pose detected');
+
+  // Voice Cues: every 30 seconds
+  useEffect(()=>{
+    if (!voiceEnabled || !running) return;
+    if (cueFreq !== 'Every 30 Seconds') return;
+    const id = window.setInterval(()=>{
+      const focusSelected = Object.entries({ ...focusAttack, ...focusDefense }).filter(([,v])=>v).map(([k])=>k);
+      const goalSelected = Object.entries(goals).filter(([,v])=>v).map(([k])=>k);
+      const hint = focusSelected[0] || goalSelected[0] || (repMode !== 'none' ? repMode : 'movement');
+      let msg = 'Stay consistent.';
+      if (cueType === 'Technical Guidance') msg = `Check form on your ${hint}.`;
+      else if (cueType === 'Positional Prompts') msg = `Think about controlling ${hint}.`;
+      else msg = 'Great pace, keep breathing.';
+      speak(msg);
+    }, 30000);
+    return ()=> window.clearInterval(id);
+  }, [voiceEnabled, running, cueFreq, cueType, focusAttack, focusDefense, goals, repMode]);
+
+  // Voice Cues: only on position change
+  const prevPostureRef = useRef<string>('—');
+  const prevStageRef = useRef<string>('-');
+  useEffect(()=>{
+    if (!voiceEnabled) return;
+    if (cueFreq !== 'Only on Position Change') return;
+    if (posture !== prevPostureRef.current || repStage !== prevStageRef.current) {
+      prevPostureRef.current = posture;
+      prevStageRef.current = repStage;
+      const msg = posture.includes('leaning') ? 'Fix posture now.' : (repStage === '-' ? 'Getting into position.' : `Stage: ${repStage}.`);
+      speak(msg);
+    }
+  }, [voiceEnabled, cueFreq, posture, repStage]);
 
   return (
     <RequireAuth>
@@ -376,32 +493,14 @@ export default function DrillPage() {
           <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
             <button onClick={()=> running ? stop() : start()} className="btn-accent w-full sm:w-auto px-6 py-3 rounded-2xl text-base min-w-[140px]">{running? 'Pause':'Resume'}</button>
             <button onClick={()=> stop(true)} disabled={!sessionActiveRef.current} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-base min-w-[140px]">End Session</button>
+            <button onClick={()=> setControlsOpen(true)} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 text-base min-w-[140px]">Controls</button>
           </div>
 
           <div className="mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="bg-panel rounded-lg p-4 border border-accent/20">
               <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Controls</h3>
               <div className="space-y-3 text-xs">
-                <label className="flex items-center justify-between gap-4">Mirror
-                  <input type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
-                </label>
-                <label className="flex items-center justify-between gap-4">Model
-                  <select value={modelComplexity} onChange={e=>setModelComplexity(Number(e.target.value))} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60">
-                    <option value={0}>Lite</option>
-                    <option value={1}>Full</option>
-                    <option value={2}>Heavy</option>
-                  </select>
-                </label>
-                <label className="flex items-center justify-between gap-4">Mode
-                  <select value={repMode} onChange={e=>{ setRepMode(e.target.value); setRepStage('-'); setRepCount(0); }} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-32">
-                    <option value="none">None</option>
-                    <option value="curlL">Curl L</option>
-                    <option value="curlR">Curl R</option>
-                    <option value="squat">Squat</option>
-                    <option value="pushup">Push-up</option>
-                    <option value="jack">Jack</option>
-                  </select>
-                </label>
+                <button onClick={()=> setControlsOpen(true)} className="btn-accent w-full px-4 py-2 rounded-xl">Open Control Menu</button>
                 <div className="pt-2 grid grid-cols-2 gap-2 text-[11px] text-brandText/60">
                   <span>FPS: {fps.toFixed(1)}</span>
                   <span>Detected: {detected? 'yes':'no'}</span>
@@ -434,6 +533,130 @@ export default function DrillPage() {
           </div>
         </div>
       </main>
+      {typeof window !== 'undefined' && controlsOpen && createPortal(
+        <div className="fixed inset-0 z-[100]">
+          <div className="absolute inset-0 bg-black/60" onClick={()=> setControlsOpen(false)} />
+          <div role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-3xl w-full bg-panel border border-accent/30 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-4 sm:p-6 max-h-[80svh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-brandText">Control Menu</h3>
+                <button onClick={()=> setControlsOpen(false)} className="px-3 py-1 rounded-lg bg-panel/60 border border-accent/30 text-brandText/80 hover:bg-panel/80">Close</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section className="bg-bg/40 rounded-xl p-4 border border-accent/20">
+                  <h4 className="text-sm font-semibold mb-3 text-brandText/80">Basics</h4>
+                  <div className="space-y-3 text-sm">
+                    <label className="flex items-center justify-between gap-4">Mirror
+                      <input type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between gap-4">Rep Mode
+                      <select value={repMode} onChange={e=>{ setRepMode(e.target.value); setRepStage('-'); setRepCount(0); }} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
+                        <option value="none">None</option>
+                        <option value="curlL">Curl L</option>
+                        <option value="curlR">Curl R</option>
+                        <option value="squat">Squat</option>
+                        <option value="pushup">Push-up</option>
+                        <option value="jack">Jack</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center justify-between gap-4">Skill Level
+                      <select value={skill} onChange={e=> setSkill(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
+                        <option>Beginner</option>
+                        <option>Intermediate</option>
+                        <option>Advanced</option>
+                        <option>Competition-Level</option>
+                        <option>Custom</option>
+                      </select>
+                    </label>
+                    {skill === 'Custom' && (
+                      <label className="flex items-center justify-between gap-4">Model Complexity
+                        <select value={modelComplexity} onChange={e=>setModelComplexity(Number(e.target.value))} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
+                          <option value={0}>Lite</option>
+                          <option value={1}>Full</option>
+                          <option value={2}>Heavy</option>
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                </section>
+
+                <section className="bg-bg/40 rounded-xl p-4 border border-accent/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-brandText/80">Focus Areas</h4>
+                    <label className="text-xs flex items-center gap-2"><input type="checkbox" className="accent-accent" checked={focusAllSelected} onChange={e=> toggleFocusAll(e.target.checked)} /> Select All</label>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-brandText/60 mb-2">Attacking</p>
+                      <div className="space-y-2">
+                        {Object.keys(focusAttack).map(k=> (
+                          <label key={k} className="flex items-center gap-2 text-[12px]"><input type="checkbox" className="accent-accent" checked={(focusAttack as any)[k]} onChange={e=> setFocusAttack(v=> ({...v, [k]: e.target.checked} as any))} /> {k}</label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-brandText/60 mb-2">Defensive</p>
+                      <div className="space-y-2">
+                        {Object.keys(focusDefense).map(k=> (
+                          <label key={k} className="flex items-center gap-2 text-[12px]"><input type="checkbox" className="accent-accent" checked={(focusDefense as any)[k]} onChange={e=> setFocusDefense(v=> ({...v, [k]: e.target.checked} as any))} /> {k}</label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="bg-bg/40 rounded-xl p-4 border border-accent/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-brandText/80">Voice Cues</h4>
+                    <label className="text-xs flex items-center gap-2"><input type="checkbox" className="accent-accent" checked={voiceEnabled} onChange={e=> setVoiceEnabled(e.target.checked)} /> Enable</label>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <label className="flex items-center justify-between gap-4">Type
+                      <select disabled={!voiceEnabled} value={cueType} onChange={e=> setCueType(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-44 disabled:opacity-50">
+                        <option>Technical Guidance</option>
+                        <option>Positional Prompts</option>
+                        <option>Motivational Coaching</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center justify-between gap-4">Frequency
+                      <select disabled={!voiceEnabled} value={cueFreq} onChange={e=> setCueFreq(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-44 disabled:opacity-50">
+                        <option>Smart Mode</option>
+                        <option>Every 30 Seconds</option>
+                        <option>Only on Position Change</option>
+                        <option>End of Round Only</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center justify-between gap-4">Style
+                      <select disabled={!voiceEnabled} value={cueStyle} onChange={e=> setCueStyle(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-44 disabled:opacity-50">
+                        <option>Neutral Instructor</option>
+                        <option>Encouraging Coach</option>
+                        <option>Quiet Mode</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-brandText/50">Speech uses your browser's voice. Ensure system sound is on.</p>
+                  </div>
+                </section>
+
+                <section className="bg-bg/40 rounded-xl p-4 border border-accent/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-brandText/80">Training Goals</h4>
+                    <label className="text-xs flex items-center gap-2"><input type="checkbox" className="accent-accent" checked={goalsAllSelected} onChange={e=> toggleGoalsAll(e.target.checked)} /> Select All</label>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 text-[12px]">
+                    {Object.keys(goals).map(k=> (
+                      <label key={k} className="flex items-center gap-2"><input type="checkbox" className="accent-accent" checked={(goals as any)[k]} onChange={e=> setGoals(v=> ({...v, [k]: e.target.checked} as any))} /> {k}</label>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button onClick={()=> setControlsOpen(false)} className="btn-accent px-5 py-2 rounded-xl">Done</button>
+              </div>
+            </div>
+          </div>
+  </div>, document.body)}
   </Layout>
   </RequireAuth>
   );
