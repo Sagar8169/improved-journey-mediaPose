@@ -4,10 +4,10 @@
 
 @layer base {
   :root {
-    --bg: #0D1117;
+  --bg: #1A1D26;
     --panel: #161B22;
-    --text: #F0F6FC;
-    --accent: #58A6FF;
+  --text: #F0F6FC;
+  --accent: #4D8AFF;
   /* Safe area insets for mobile devices with notches */
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
@@ -59,13 +59,14 @@ input, select, textarea {
 
 /* Accent utilities */
 .btn-accent {
-  background:#58A6FF;
-  color:#0D1117;
+  background:#4D8AFF;
+  color:#FFFFFF;
   font-weight:500;
   border-radius:0.75rem;
-  transition:background .18s ease, box-shadow .18s ease;
+  transition:background .18s ease, box-shadow .18s ease, transform .08s ease;
 }
-.btn-accent:hover { background:#3392ff; }
+.btn-accent:hover { background:#3b79f0; box-shadow:0 8px 24px rgba(77,138,255,0.3);} 
+.btn-accent:active { transform: translateY(1px); }
 .btn-accent:disabled { opacity:.55; cursor:not-allowed; }
 
 .border-panel { border-color:#1F242C; }

@@ -8,9 +8,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-  bg: '#0D1117',
+  bg: '#1A1D26',
   panel: '#161B22',
-  accent: '#58A6FF',
+  accent: '#4D8AFF',
   brandText: '#F0F6FC'
       },
       keyframes: {
