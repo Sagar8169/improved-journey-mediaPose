@@ -1,7 +1,8 @@
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
 import { useAuthStore } from '@/components/authStore';
+import { createPortal } from 'react-dom';
 
 type Mode = 'login' | 'signup';
 
@@ -13,9 +14,19 @@ export default function Landing() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    if (!mounted) return;
+    if (open) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [open, mounted]);
 
   const openAuth = (initial: Mode) => {
-    if (currentUser) { router.push('/home'); return; }
     setMode(initial);
     setOpen(true);
   };
@@ -55,17 +66,19 @@ export default function Landing() {
         </p>
         {/* CTA */}
         <button
+          type="button"
           onClick={() => openAuth('login')}
           className="btn-accent px-6 py-3 rounded-2xl text-white text-base sm:text-lg font-medium shadow-[0_12px_30px_rgba(77,138,255,0.35)] hover:shadow-[0_16px_40px_rgba(77,138,255,0.45)]"
           aria-haspopup="dialog"
+          aria-controls="auth-modal"
         >
           Get Started
         </button>
       </div>
 
-      {/* Modal */}
-      {open && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Modal (portal to body to avoid stacking issues) */}
+      {mounted && open && typeof document !== 'undefined' && createPortal(
+  <div id="auth-modal" role="dialog" aria-modal="true" className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="relative z-10 w-full max-w-md bg-panel border border-accent/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
@@ -149,7 +162,8 @@ export default function Landing() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
