@@ -6,11 +6,12 @@ This comprehensive guide covers deploying the MediaPipe Pose application to vari
 
 1. [Prerequisites](#prerequisites)
 2. [Environment Setup](#environment-setup)
-3. [Database Integration](#database-integration)
-4. [Deployment Platforms](#deployment-platforms)
-5. [Security Considerations](#security-considerations)
-6. [Monitoring and Analytics](#monitoring-and-analytics)
-7. [Troubleshooting](#troubleshooting)
+3. [Run Locally (localhost)](#run-locally-localhost)
+4. [Database Integration](#database-integration)
+5. [Deployment Platforms](#deployment-platforms)
+6. [Security Considerations](#security-considerations)
+7. [Monitoring and Analytics](#monitoring-and-analytics)
+8. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -75,6 +76,84 @@ npm install -g netlify-cli  # For Netlify deployment
    # Optional: Enable debug mode
    DEBUG=false
    ```
+
+## Run Locally (localhost)
+
+This section covers running the Next.js app on your machine for development and for a production-like local test.
+
+### Quickstart (development server)
+
+1. Install dependencies
+    ```bash
+    npm install
+    ```
+2. Start the dev server (defaults to http://localhost:3000)
+    ```bash
+    npm run dev
+    ```
+3. Open the app
+    - Browser: http://localhost:3000
+    - Health check: http://localhost:3000/api/health
+
+### Use a different port (optional)
+
+- Using CLI flag:
+   ```bash
+   npm run dev -- -p 4000
+   ```
+- Using environment variable (Linux/macOS):
+   ```bash
+   PORT=4000 npm run dev
+   ```
+
+Tip: If you need to access from other devices on your LAN, bind to all interfaces:
+```bash
+HOST=0.0.0.0 PORT=3000 npm run dev
+```
+
+### Production-like run locally
+
+Build and run the optimized production server (Node.js >=18 <21):
+```bash
+npm run build
+npm start         # serves on http://localhost:3000 by default
+```
+
+Change the port for production server:
+```bash
+PORT=4000 npm start
+```
+
+### Verify locally
+
+- App UI: http://localhost:3000
+- Health endpoint:
+   ```bash
+   curl -s http://localhost:3000/api/health | jq .
+   ```
+   Expected: status "ok" with environment and version details.
+
+### Camera and HTTPS notes
+
+- Browsers treat http://localhost and http://127.0.0.1 as secure for camera access.
+- For access from other devices (phone/tablet) on your network, use HTTPS (e.g., via a reverse proxy, tunneling tool, or deploy to a platform that provides TLS).
+
+### Docker (optional)
+
+Run locally using Docker Compose (mapped to localhost:3000):
+```bash
+docker compose up --build
+```
+Open http://localhost:3000, then stop with:
+```bash
+docker compose down
+```
+
+### Common local issues
+
+- Port already in use: choose a new port (e.g., `-p 4000` or `PORT=4000 ...`).
+- Node version mismatch: ensure Node >=18 and <21 (see `"engines"` in `package.json`).
+- Camera blocked: allow camera permissions in the browser; use HTTPS for non-localhost access.
 
 ### Production Environment Variables
 
