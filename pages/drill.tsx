@@ -550,16 +550,6 @@ export default function DrillPage() {
                     <label className="flex items-center justify-between gap-4">Mirror
                       <input type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
                     </label>
-                    <label className="flex items-center justify-between gap-4">Rep Mode
-                      <select value={repMode} onChange={e=>{ setRepMode(e.target.value); setRepStage('-'); setRepCount(0); }} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
-                        <option value="none">None</option>
-                        <option value="curlL">Curl L</option>
-                        <option value="curlR">Curl R</option>
-                        <option value="squat">Squat</option>
-                        <option value="pushup">Push-up</option>
-                        <option value="jack">Jack</option>
-                      </select>
-                    </label>
                     <label className="flex items-center justify-between gap-4">Skill Level
                       <select value={skill} onChange={e=> setSkill(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
                         <option>Beginner</option>
