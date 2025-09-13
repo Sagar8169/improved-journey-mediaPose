@@ -202,7 +202,7 @@ export default function DrillPage() {
   if (suggestionTimeoutRef.current) { window.clearTimeout(suggestionTimeoutRef.current); suggestionTimeoutRef.current = null; }
   setSuggestion(null);
       if (rec) {
-        router.push(`/profile?justSaved=${encodeURIComponent(rec.id)}`);
+  router.push(`/account?justSaved=${encodeURIComponent(rec.id)}`);
       }
     }
   };
@@ -497,21 +497,13 @@ export default function DrillPage() {
           </div>
 
           <div className="mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-            <div className="bg-panel rounded-lg p-4 border border-accent/20">
-              <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Controls</h3>
-              <div className="space-y-3 text-xs">
-                <button onClick={()=> setControlsOpen(true)} className="btn-accent w-full px-4 py-2 rounded-xl">Open Control Menu</button>
-                <div className="pt-2 grid grid-cols-2 gap-2 text-[11px] text-brandText/60">
-                  <span>FPS: {fps.toFixed(1)}</span>
-                  <span>Detected: {detected? 'yes':'no'}</span>
-                  <span>Reps: {repCount}</span>
-                  <span>Stage: {repStage}</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-2">
+            <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-3">
               <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Metrics</h3>
               <ul className="text-[11px] grid grid-cols-2 md:grid-cols-3 gap-y-1 gap-x-3 leading-relaxed text-brandText/70">
+                <li>FPS: {fps.toFixed(1)}</li>
+                <li>Detected: {detected ? 'yes' : 'no'}</li>
+                <li>Reps: {repCount}</li>
+                <li>Stage: {repStage}</li>
                 <li>Elbow L/R: {angles.elbowL?.toFixed(0) ?? '—'} / {angles.elbowR?.toFixed(0) ?? '—'}</li>
                 <li>Knee L/R: {angles.kneeL?.toFixed(0) ?? '—'} / {angles.kneeR?.toFixed(0) ?? '—'}</li>
                 <li>Shoulder L/R: {angles.shoulderL?.toFixed(0) ?? '—'} / {angles.shoulderR?.toFixed(0) ?? '—'}</li>

@@ -6,7 +6,7 @@ A comprehensive pose detection web application built with Next.js 14, React 18, 
 
 - **Real-time Pose Detection**: Powered by MediaPipe Pose for accurate pose landmark detection
 - **Session Tracking**: Monitor pose detection sessions with detailed statistics
-- **User Authentication**: Built-in authentication system with profile management
+- **User Authentication**: Built-in authentication system with account management
 - **Responsive Design**: Modern UI built with Tailwind CSS
 - **Client-side Processing**: No backend required - all processing happens in the browser
 - **TypeScript Support**: Full TypeScript implementation for better development experience
@@ -84,7 +84,7 @@ cp .env.example .env.local
 │   ├── index.tsx         # Landing page
 │   ├── home.tsx          # Main pose detection interface
 │   ├── drill.tsx         # Pose drill exercises
-│   └── profile.tsx       # User profile management
+│   └── account.tsx       # User account management
 ├── components/           # Reusable React components
 │   ├── Layout.tsx        # Main layout wrapper
 │   ├── RequireAuth.tsx   # Authentication guard
@@ -104,7 +104,7 @@ The application includes a built-in authentication system:
 
 - **Demo Account**: Email: `demo@jiujitsu.com`, Password: `demo123`
 - **Signup/Login**: Create new accounts or login with existing credentials
-- **Profile Management**: Update user information and settings
+- **Account Management**: Update user information and settings
 - **Session Persistence**: Maintains login state across browser sessions
 
 **Note**: Current implementation uses in-memory storage. See [DEPLOYMENT.md](./DEPLOYMENT.md) for database integration options.

@@ -12,7 +12,7 @@ export default function App({ Component, pageProps }: AppProps) {
 
   const LS_AUTH = 'jj_app.auth';
   const LS_LAST = 'jj_app.lastRoute';
-  const ROUTE_WHITELIST = new Set(['/home','/drill','/profile']);
+  const ROUTE_WHITELIST = new Set(['/home','/drill','/account']);
 
   // Rehydrate session from localStorage using token (no password storage)
   useEffect(() => {

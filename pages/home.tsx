@@ -65,8 +65,8 @@ export default function HomePage() {
                 <a href="#insights" className="block w-full text-center py-3 rounded-2xl bg-[#2b2f3a] text-[15px]" style={{ color: '#a2c1e8' }}>
                   View Past Sessions
                 </a>
-                <Link href="/profile" className="block w-full text-center py-3 rounded-2xl bg-[#2b2f3a] text-[15px]" style={{ color: '#a2c1e8' }}>
-                  Settings
+                  <Link href="/account" className="block w-full text-center py-3 rounded-2xl bg-[#2b2f3a] text-[15px]" style={{ color: '#a2c1e8' }}>
+                    Account
                 </Link>
               </div>
             </div>

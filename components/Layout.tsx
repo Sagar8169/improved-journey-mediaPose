@@ -17,7 +17,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <nav className="hidden md:flex items-center gap-8 text-sm">
               {currentUser && <Link href="/home" className="hover:text-accent/80">Home</Link>}
               {currentUser && <Link href="/drill" className="hover:text-accent/80">Drill</Link>}
-              {currentUser && <Link href="/profile" className="hover:text-accent/80">Profile</Link>}
+              {currentUser && <Link href="/account" className="hover:text-accent/80">Account</Link>}
               {currentUser && <button onClick={logout} className="text-xs px-3 py-1 rounded bg-panel border border-accent/30 hover:bg-accent/10 text-accent">Logout</button>}
             </nav>
             <button aria-label="Menu" onClick={()=>setOpen(o=>!o)} className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded bg-panel border border-panel hover:border-accent/40 text-accent">☰</button>
@@ -27,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="md:hidden border-t border-panel bg-bg px-4 pb-4 pt-2 space-y-2 text-sm">
             {currentUser && <Link onClick={()=>setOpen(false)} href="/home" className="block py-1 hover:text-accent/80">Home</Link>}
             {currentUser && <Link onClick={()=>setOpen(false)} href="/drill" className="block py-1 hover:text-accent/80">Drill</Link>}
-            {currentUser && <Link onClick={()=>setOpen(false)} href="/profile" className="block py-1 hover:text-accent/80">Profile</Link>}
+            {currentUser && <Link onClick={()=>setOpen(false)} href="/account" className="block py-1 hover:text-accent/80">Account</Link>}
             {currentUser && <button onClick={()=>{logout(); setOpen(false);}} className="block py-1 text-accent hover:opacity-80">Logout</button>}
           </div>
         )}
