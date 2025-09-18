@@ -26,6 +26,14 @@ export default function DrillPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [running, setRunning] = useState(false);
   const [mirror, setMirror] = useState(true);
+  // Camera facing: default to front camera for self-view on mobile
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
+  // If only one camera is available, block further flip attempts and show a notice prompting reload
+  const [cameraSwitchBlocked, setCameraSwitchBlocked] = useState(false);
+  const [cameraNotice, setCameraNotice] = useState<string | null>(null);
+  // Keep mirror state in a ref so the Mediapipe onResults callback always reads the latest value
+  const mirrorRef = useRef(mirror);
+  useEffect(()=>{ mirrorRef.current = mirror; }, [mirror]);
   const [modelComplexity, setModelComplexity] = useState(1);
   const [repMode, setRepMode] = useState('none');
   const [repStage, setRepStage] = useState('-');
@@ -122,11 +130,26 @@ export default function DrillPage() {
     return deg;
   };
 
-  const start = async () => {
+  // Start camera/pose pipeline. Optional facing override for internal restarts.
+  const start = async (facingOverride?: 'user'|'environment') => {
     if (running) return;
     const video = videoRef.current!;
     try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      const desiredFacing = facingOverride ?? cameraFacing;
+      // Prefer requested facing. If it fails, try alternate, then generic fallback.
+      try {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: desiredFacing } as any, audio: false });
+      } catch (err1) {
+        const alt: 'user'|'environment' = desiredFacing === 'user' ? 'environment' : 'user';
+        try {
+          console.warn('Preferred camera failed, trying alternate:', alt, err1);
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: alt } as any, audio: false });
+          setCameraFacing(alt);
+        } catch (err2) {
+          console.warn('Alternate camera failed, trying default constraints', err2);
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+      }
     } catch (e) {
       console.error('camera error', e);
       return;
@@ -207,6 +230,32 @@ export default function DrillPage() {
     }
   };
 
+  // Toggle between front/back cameras. If running, restart stream with new facing.
+  const toggleCameraFacing = async () => {
+    if (cameraSwitchBlocked) return;
+    // Check available cameras before attempting to switch
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      if (videoInputs.length <= 1) {
+        setCameraNotice('No other camera was found on this device. Please reload the page and try again.');
+        setCameraSwitchBlocked(true);
+        return;
+      }
+    } catch (e) {
+      // If enumeration fails, proceed with existing toggle logic as a best-effort
+      console.warn('enumerateDevices failed; proceeding with toggle', e);
+    }
+    const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
+    setCameraFacing(next);
+    // Do not auto-toggle mirror; keep user preference stable across camera changes.
+    if (running) {
+      // Gracefully stop without tearing down Pose, then restart with the next facing.
+      try { stop(false); } catch {}
+      await start(next);
+    }
+  };
+
   const onResults = (results: PoseResults) => {
   const canvas = canvasRef.current;
   const video = videoRef.current;
@@ -219,7 +268,7 @@ export default function DrillPage() {
 
     ctx.save();
     ctx.clearRect(0,0,canvas.width, canvas.height);
-    if (mirror) { ctx.translate(canvas.width,0); ctx.scale(-1,1); }
+  if (mirrorRef.current) { ctx.translate(canvas.width,0); ctx.scale(-1,1); }
     try {
       ctx.drawImage(video, 0,0, canvas.width, canvas.height);
     } catch {
@@ -340,7 +389,8 @@ export default function DrillPage() {
 
     // crude text overlays for angles
     const drawAngle = (pt?: number[], val?: number, color='#fff') => {
-      if(!pt || val==null) return; const x = (mirror? (1-pt[0]) : pt[0]) * canvas.width; const y = pt[1]*canvas.height; ctx.fillStyle=color; ctx.font='12px sans-serif'; ctx.fillText(String(Math.round(val)), x+6, y-6);
+      // Note: When mirroring, the canvas context itself is flipped. Use raw pt[0] here so text aligns with landmarks.
+      if(!pt || val==null) return; const x = pt[0] * canvas.width; const y = pt[1]*canvas.height; ctx.fillStyle=color; ctx.font='12px sans-serif'; ctx.fillText(String(Math.round(val)), x+6, y-6);
     };
   const angleColor = '#58A6FF';
   drawAngle(lElbow, elbowL, angleColor);
@@ -476,9 +526,19 @@ export default function DrillPage() {
                 </div>
               </div>
             )}
+            {cameraNotice && (
+              <div className="absolute inset-0 flex items-center justify-center z-30">
+                <div className="bg-black/70 px-6 py-5 rounded-2xl border border-accent/40 shadow-2xl max-w-[85%] text-center">
+                  <p className="text-white text-base md:text-lg mb-4">{cameraNotice}</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button onClick={()=> window.location.reload()} className="btn-accent px-4 py-2 rounded-xl">Reload Page</button>
+                  </div>
+                </div>
+              </div>
+            )}
             {!running && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-bg/80">
-                <button onClick={start} className="btn-accent px-6 py-3 rounded-2xl font-medium">Enable Camera</button>
+                <button onClick={()=> start()} className="btn-accent px-6 py-3 rounded-2xl font-medium">Enable Camera</button>
                 <p className="text-xs text-brandText/60">Camera permission required to begin.</p>
               </div>
             )}
@@ -493,6 +553,9 @@ export default function DrillPage() {
           <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
             <button onClick={()=> running ? stop() : start()} className="btn-accent w-full sm:w-auto px-6 py-3 rounded-2xl text-base min-w-[140px]">{running? 'Pause':'Resume'}</button>
             <button onClick={()=> stop(true)} disabled={!sessionActiveRef.current} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-base min-w-[140px]">End Session</button>
+            <button onClick={toggleCameraFacing} disabled={cameraSwitchBlocked} className="md:hidden w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 disabled:opacity-40 text-base min-w-[140px]" aria-label="Toggle front/back camera">
+              Flip Camera
+            </button>
             <button onClick={()=> setControlsOpen(true)} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 text-base min-w-[140px]">Controls</button>
           </div>
 
@@ -539,8 +602,9 @@ export default function DrillPage() {
                 <section className="bg-bg/40 rounded-xl p-4 border border-accent/20">
                   <h4 className="text-sm font-semibold mb-3 text-brandText/80">Basics</h4>
                   <div className="space-y-3 text-sm">
+                    {/* Mirror flips the entire canvas context horizontally; drawing code uses raw landmark coords to avoid double flips */}
                     <label className="flex items-center justify-between gap-4">Mirror
-                      <input type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
+                      <input aria-label="Mirror video horizontally" type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
                     </label>
                     <label className="flex items-center justify-between gap-4">Skill Level
                       <select value={skill} onChange={e=> setSkill(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">
