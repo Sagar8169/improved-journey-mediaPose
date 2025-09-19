@@ -561,22 +561,45 @@ export default function DrillPage() {
 
           <div className="mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-3">
-              <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Metrics</h3>
-              <ul className="text-[11px] grid grid-cols-2 md:grid-cols-3 gap-y-1 gap-x-3 leading-relaxed text-brandText/70">
-                <li>FPS: {fps.toFixed(1)}</li>
-                <li>Detected: {detected ? 'yes' : 'no'}</li>
-                <li>Reps: {repCount}</li>
-                <li>Stage: {repStage}</li>
-                <li>Elbow L/R: {angles.elbowL?.toFixed(0) ?? '—'} / {angles.elbowR?.toFixed(0) ?? '—'}</li>
-                <li>Knee L/R: {angles.kneeL?.toFixed(0) ?? '—'} / {angles.kneeR?.toFixed(0) ?? '—'}</li>
-                <li>Shoulder L/R: {angles.shoulderL?.toFixed(0) ?? '—'} / {angles.shoulderR?.toFixed(0) ?? '—'}</li>
-                <li>Hip L/R: {angles.hipL?.toFixed(0) ?? '—'} / {angles.hipR?.toFixed(0) ?? '—'}</li>
-                <li>Torso: {angles.torso?.toFixed(0) ?? '—'}</li>
-                <li>Sym sh/k: {angles.symShoulder?.toFixed(0) ?? '—'} / {angles.symKnee?.toFixed(0) ?? '—'}</li>
-                <li>Avg vis: {avgVis?.toFixed(2) ?? '—'}</li>
-                <li>BBox: {bbox? `${(bbox[0]*100).toFixed(0)}×${(bbox[1]*100).toFixed(0)}`:'—'}</li>
-                <li className="col-span-2 md:col-span-3">Posture: {posture}</li>
-              </ul>
+              <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Live KPIs</h3>
+              {(() => {
+                const kpis = store.getLiveKPIs();
+                const pct = (num?: number, den?: number) => {
+                  if (num==null) return '—';
+                  if (den!=null && den>0) return `${Math.round((num/den)*100)}%`;
+                  if (typeof num === 'number' && num>=0 && num<=1) return `${Math.round(num*100)}%`;
+                  return `${Math.round(num)}%`;
+                };
+                const get = (v?: number) => v==null? '—' : String(Math.round(v));
+                const controlPct = kpis?.controlPercentPct != null ? `${Math.round(kpis.controlPercentPct)}%` : '—';
+                const wlByPos = kpis?.winLossByPosition || {};
+                const wlStr = Object.keys(wlByPos).length ? Object.entries(wlByPos).map(([p,wl])=> {
+                  const wlo = wl as { wins?: number; losses?: number };
+                  return `${p}: ${wlo.wins ?? 0}-${wlo.losses ?? 0}`;
+                }).join(', ') : '—';
+                return (
+                  <ul className="text-[11px] grid grid-cols-1 md:grid-cols-3 gap-y-1 gap-x-3 leading-relaxed text-brandText/70">
+                    <li>Positional Control Time %: {controlPct}</li>
+                    <li>Submission Attempts & Success %: {(kpis?.submission?.attempts ?? 0)}/{pct(kpis?.submission?.successes ?? 0, kpis?.submission?.attempts ?? 0)}</li>
+                    <li>Escape Attempts & Success %: {(kpis?.escape?.attempts ?? 0)}/{pct(kpis?.escape?.successes ?? 0, kpis?.escape?.attempts ?? 0)}</li>
+                    <li>Guard Retention %: {pct(kpis?.guardRetentionPct ?? 0)}</li>
+                    <li>Transition Efficiency %: {pct(kpis?.transitionEfficiencyPct ?? 0)}</li>
+                    <li>Takedown Success %: {pct(kpis?.takedown?.successes ?? 0, kpis?.takedown?.attempts ?? 0)}</li>
+                    <li>Pressure Passing Success %: {pct(kpis?.pressurePassingSuccessPct ?? 0)}</li>
+                    <li>Scramble Win %: {(() => { const s = kpis?.scramble; return s? pct(s.wins ?? 0, ((s.wins ?? 0)+(s.losses ?? 0))||0): '—'; })()}</li>
+                    <li>Positional Error Trends: {kpis?.positionalErrorTrend ?? '—'}</li>
+                    <li>Session Consistency Rating: {get(kpis?.consistencyRating)}</li>
+                    <li>Endurance / Fatigue Indicators: {kpis?.enduranceFatigue?.fatigueTrend ?? '—'}</li>
+                    <li>Technical Variety Index: {get(kpis?.technicalVarietyIdx)}</li>
+                    <li>Win/Loss Ratio by Position: {wlStr}</li>
+                    <li>Rolling Intensity Score: {get(kpis?.intensityScore)}</li>
+                    <li>Reaction Speed (ms): {get(kpis?.reactionTimeMs)}</li>
+                    <li>Sweep Success %: {pct(kpis?.sweep?.successes ?? 0, kpis?.sweep?.attempts ?? 0)}</li>
+                    <li>Guard Pass Prevention Rate: {pct(kpis?.guardPassPreventionPct ?? 0)}</li>
+                    <li>Recovery Time Between Rounds (ms): {get(kpis?.recoveryTimeMs)}</li>
+                  </ul>
+                );
+              })()}
             </div>
             <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-3">
               <h3 className="text-sm font-semibold mb-2 tracking-wide text-brandText/70">Samples (debug)</h3>

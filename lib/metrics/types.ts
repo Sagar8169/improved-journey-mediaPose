@@ -6,6 +6,37 @@ export interface SegmentSummary {
   avgTorsoAngle?: number; shoulderSymMean?: number; kneeSymMean?: number;
 }
 export interface SessionQualityFlags { lowQuality?: boolean; short?: boolean; }
+
+// ---- Grappling KPI Types (Rollmetrics) ----
+export interface PositionSpan { name: string; confidence: number; tStart: number; tEnd?: number; }
+export interface AttemptStats { attempts: number; successes: number; }
+export interface GrapplingKPIs {
+  // Position control timeline and aggregates
+  controlTimeline: PositionSpan[];
+  controlTimeByPos: Record<string, number>; // ms per position name
+  controlPercentPct?: number; // convenience: overall control time percentage 0-100
+  // Attempts and outcomes by category
+  submission: AttemptStats;
+  escape: AttemptStats;
+  transition: AttemptStats;
+  takedown: AttemptStats;
+  pass: AttemptStats; // guard pass attempts
+  sweep: AttemptStats;
+  scramble: { attempts: number; wins: number; losses: number };
+  // Derived metrics (optional until event classifier is present)
+  guardRetentionPct?: number; // retained guard vs pass attempts
+  guardPassPreventionPct?: number; // prevented passes vs attempts
+  pressurePassingSuccessPct?: number; // passes completed when attacking top
+  transitionEfficiencyPct?: number; // completed transitions / attempts
+  positionalErrorTrend?: 'up' | 'down' | 'flat';
+  consistencyRating?: number; // mirrors formConsistencyScore
+  enduranceFatigue?: { fatigueTrend?: 'building' | 'fading' | 'stable'; };
+  technicalVarietyIdx?: number; // unique techniques/positions seen
+  winLossByPosition?: Record<string, { wins: number; losses: number }>;
+  intensityScore?: number; // 0-100, rolling intensity
+  reactionTimeMs?: number; // time to first meaningful movement
+  recoveryTimeMs?: number; // between rounds (post-session)
+}
 export interface SessionRecord {
   schemaVersion: number;
   sessionId: string;
@@ -43,6 +74,12 @@ export interface SessionRecord {
   focusScore?: number;
   qualityFlags?: SessionQualityFlags;
   finalized?: boolean;
+  // ---- Grappling KPIs (live + finalized) ----
+  grappling?: GrapplingKPIs;
+  // Live helpers for KPI computation
+  firstPoseTs?: number; // time when we first detected pose
+  lastBboxAreaPct?: number; // to compute motion delta per frame
+  intensityEma?: number; // 0-100 scaled rolling intensity
 }
 export interface FrameUpdatePayload {
   hasPose: boolean;

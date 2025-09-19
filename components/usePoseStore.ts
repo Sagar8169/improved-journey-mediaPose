@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SessionTracker } from '@/lib/metrics/SessionTracker';
-import { FrameUpdatePayload, SessionRecord } from '@/lib/metrics/types';
+import { FrameUpdatePayload, SessionRecord, GrapplingKPIs } from '@/lib/metrics/types';
 
 export interface SessionMetrics {
   totalReps: number;
@@ -42,6 +42,8 @@ interface State extends SessionMetrics {
   updateFrameMetrics: (payload: FrameUpdatePayload) => void;
   endSessionTracking: () => SessionRecord | null;
   clearSessionHistory: () => void;
+  // Live KPI selector
+  getLiveKPIs: () => GrapplingKPIs | undefined;
 }
 
 const initial: SessionMetrics = {
@@ -123,5 +125,9 @@ export const usePoseStore = create<State>((set, get) => ({
     set(s => ({ activeSessionTracker: null, sessionHistory: [rec, ...s.sessionHistory].slice(0,100) }));
     return rec;
   },
-  clearSessionHistory: () => set({ sessionHistory: [] })
+  clearSessionHistory: () => set({ sessionHistory: [] }),
+  getLiveKPIs: () => {
+    const tr = get().activeSessionTracker; if (!tr) return undefined;
+    return tr.currentKPIs();
+  }
 }));
