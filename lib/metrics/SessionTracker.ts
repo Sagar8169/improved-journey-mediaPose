@@ -1,5 +1,6 @@
 import { SESSION_SCHEMA_VERSION, SEGMENT_MS, MIN_VALID_SESSION_SEC, MIN_DETECTION_RATE, SessionRecord, FrameUpdatePayload, SymmetryStats, JointAngleStats, GrapplingKPIs } from './types';
 import { updateRunning } from './stats';
+import { buildSessionReport } from './report';
 
 export class SessionTracker {
   rec: SessionRecord;
@@ -149,7 +150,7 @@ export class SessionTracker {
     this.rec.focusScore = (this.rec.detectionRate || 0) * 100;
     // Map consistency to grappling rating for now
     if (this.rec.grappling) this.rec.grappling.consistencyRating = this.rec.formConsistencyScore;
-    // Control time percent (single generic position until classifier exists)
+    // Control time tracking (single generic position until classifier exists)
     if (this.rec.grappling) {
       const totalMs = Math.max(0, (this.rec.endTs || end) - this.rec.startTs);
       const activeMs = Math.round(totalMs * (this.rec.detectionRate || 0));
@@ -161,6 +162,12 @@ export class SessionTracker {
     if (detectionRate < MIN_DETECTION_RATE) quality.lowQuality = true;
     this.rec.qualityFlags = quality;
     this.rec.finalized = true;
+    // Build the new Session Report JSON
+    try {
+      this.rec.report = buildSessionReport(this.rec, []);
+    } catch (e:any) {
+      this.rec.errors.push('report_build:' + (e?.message || String(e)));
+    }
     return this.rec;
   }
 

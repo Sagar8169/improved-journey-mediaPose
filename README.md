@@ -187,3 +187,28 @@ For issues and questions:
 - Create an issue on GitHub
 - Check the [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment-specific help
 - Review the troubleshooting section above
+
+## Session Report (Grappling)
+
+Each finalized session now includes a `report` JSON object designed for database/storage integration. Percentages are floats (0–100), counts are integers, scores are floats, arrays and maps as shown, and all times are seconds (float). If a metric cannot be computed from the current session data, it is set to `null` and an error is logged in `SessionRecord.errors`.
+
+Shape overview:
+
+```
+report = {
+   corePositionalMetrics: {
+      positionalControlTimes: { position: percent },
+      escapes: { attempts, successPercent },
+      reversals: { count, successPercent },
+   },
+   guardMetrics: { guardRetentionPercent, sweepAttempts, sweepSuccessPercent, passingAttempts, guardPassPreventionPercent },
+   transitionMetrics: { transitionEfficiencyPercent, errorCounts: { failedTransition, lostGuard, positionalMistake } },
+   submissionMetrics: { submissionAttempts, submissionSuccessPercent, submissionChains, submissionDefenses },
+   scrambleMetrics: { scrambleFrequency, scrambleWinPercent, scrambleOutcomeImpact },
+   effortEnduranceMetrics: { rollingIntensityScore, fatigueCurve, enduranceIndicator, recoveryTimeBetweenRounds },
+   consistencyTrends: { sessionConsistencyRating, technicalVarietyIndex, positionalErrorTrends },
+   summary: { overallSessionScorecard, historicalPerformanceTrend, winLossRatioByPosition, reactionSpeed },
+}
+```
+
+Quick dev check: open `/api/session-metrics` to view an example response shape.

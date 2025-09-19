@@ -76,6 +76,8 @@ export interface SessionRecord {
   finalized?: boolean;
   // ---- Grappling KPIs (live + finalized) ----
   grappling?: GrapplingKPIs;
+  // New session report JSON (computed at finalize)
+  report?: SessionReport;
   // Live helpers for KPI computation
   firstPoseTs?: number; // time when we first detected pose
   lastBboxAreaPct?: number; // to compute motion delta per frame
@@ -98,3 +100,69 @@ export const SESSION_SCHEMA_VERSION = 1;
 export const SEGMENT_MS = 30_000;
 export const MIN_VALID_SESSION_SEC = 10;
 export const MIN_DETECTION_RATE = 0.4;
+
+// ---- New Session Report Schema (JSON-storable) ----
+export type ScrambleOutcomeImpact = 'dominant' | 'neutral' | 'disadvantaged';
+
+export interface SessionReportCorePositionalMetrics {
+  positionalControlTimes: Record<string, number | null>; // percentages 0-100 by position
+  escapes: { attempts: number | null; successPercent: number | null };
+  reversals: { count: number | null; successPercent: number | null };
+}
+
+export interface SessionReportGuardMetrics {
+  guardRetentionPercent: number | null;
+  sweepAttempts: number | null;
+  sweepSuccessPercent: number | null;
+  passingAttempts: number | null;
+  guardPassPreventionPercent: number | null;
+}
+
+export interface SessionReportTransitionMetrics {
+  transitionEfficiencyPercent: number | null;
+  errorCounts: { failedTransition: number | null; lostGuard: number | null; positionalMistake: number | null };
+}
+
+export interface SessionReportSubmissionMetrics {
+  submissionAttempts: number | null;
+  submissionSuccessPercent: number | null;
+  submissionChains: number | null;
+  submissionDefenses: number | null;
+}
+
+export interface SessionReportScrambleMetrics {
+  scrambleFrequency: number | null;
+  scrambleWinPercent: number | null;
+  scrambleOutcomeImpact: ScrambleOutcomeImpact | null;
+}
+
+export interface SessionReportEffortEnduranceMetrics {
+  rollingIntensityScore: number | null;
+  fatigueCurve: number[] | null;
+  enduranceIndicator: number | null;
+  recoveryTimeBetweenRounds: number | null; // seconds
+}
+
+export interface SessionReportConsistencyTrends {
+  sessionConsistencyRating: number | null;
+  technicalVarietyIndex: number | null;
+  positionalErrorTrends: string[] | null;
+}
+
+export interface SessionReportSummary {
+  overallSessionScorecard: number | null;
+  historicalPerformanceTrend: number[] | null;
+  winLossRatioByPosition: Record<string, number> | null; // position -> ratio
+  reactionSpeed: number | null; // seconds
+}
+
+export interface SessionReport {
+  corePositionalMetrics: SessionReportCorePositionalMetrics;
+  guardMetrics: SessionReportGuardMetrics;
+  transitionMetrics: SessionReportTransitionMetrics;
+  submissionMetrics: SessionReportSubmissionMetrics;
+  scrambleMetrics: SessionReportScrambleMetrics;
+  effortEnduranceMetrics: SessionReportEffortEnduranceMetrics;
+  consistencyTrends: SessionReportConsistencyTrends;
+  summary: SessionReportSummary;
+}
