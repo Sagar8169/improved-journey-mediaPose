@@ -1,4 +1,4 @@
-# Production-ready requirements —  (Netlify + MongoDB + ResSend)
+# Production-ready requirements —  (Netlify + MongoDB + Resend)
 
 
 ---
@@ -7,7 +7,7 @@
 
 * Hosting: Netlify (free tier) with dedicated domain .
 * Database: MongoDB (Atlas free tier).
-* Email verification: ResSend (free plan).
+* Email verification: Resend (free plan).
 * Target load: \~50 random users over a 90-day window.
 * Primary goals: persistent, secure authentication and per-user session history; email verification; safe defaults for production; ability to recover/backup 90-day session data.
 
@@ -17,7 +17,7 @@
 
 * Frontend: Next.js (existing code) built and deployed to Netlify.
 * Backend: Next.js API routes (serverless functions) connecting to MongoDB Atlas. All stateful logic and persistence move from client memory to server.
-* Auth: JWT access tokens + refresh token pattern; refresh stored as **httpOnly, Secure cookie**. Passwords hashed with bcrypt. Email verification via ResSend link containing a signed token (or short code).
+* Auth: JWT access tokens + refresh token pattern; refresh stored as **httpOnly, Secure cookie**. Passwords hashed with bcrypt. Email verification via Resend link containing a signed token (or short code).
 * Data retention: Session documents stored in MongoDB; TTL index or scheduled job enforces 90-day retention.
 * Logging & monitoring: health endpoint + Sentry for error monitoring + simple request logging. Uptime monitoring (e.g., UptimeRobot).
 
@@ -32,7 +32,7 @@
   * accepts email, password, displayName (validate input);
   * hashes passwords with bcrypt (salt rounds >= 10);
   * creates user doc with `emailVerified: false`;
-  * sends verification email (ResSend) containing a short verification token (signed, expires e.g. 24h).
+  * sends verification email (Resend) containing a short verification token (signed, expires e.g. 24h).
 * Email verification endpoint:
 
   * verifies token, sets `emailVerified: true`, returns success.
@@ -78,7 +78,7 @@
 * All traffic served over HTTPS (Netlify automatic certs). Enforce `Strict-Transport-Security` header.
 * Secrets in environment variables only; never check them into repo:
 
-  * `MONGODB_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `RESSEND_API_KEY`, `NEXT_PUBLIC_BASE_URL`, etc.
+  * `MONGODB_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `RESEND_API_KEY`, `NEXT_PUBLIC_BASE_URL`, etc.
 * Password hashing: bcrypt with salt.
 * Token security:
 
@@ -86,7 +86,7 @@
   * Refresh tokens: stored hashed server-side, cookie flagged `HttpOnly`, `Secure`, `SameSite=Strict`.
 * Input validation & sanitization (server-side): use a schema validator (zod or Joi).
 * Rate limiting: per-IP and per-account endpoints (e.g., login attempts) – lightweight in-memory for free tier or middleware using serverless function memory; add lockout after repeated failures.
-* CORS: allow only `https://jiujitsu.com` and trusted dev origins.
+* CORS: allow only `https://rollmetric.com` and trusted dev origins.
 * CSP, X-Frame-Options, XSS protections (helmet headers/checks).
 * No plaintext credentials anywhere.
 * Dependency scanning: run `npm audit` and fix critical issues before deployment.
@@ -227,8 +227,8 @@
   * `MONGODB_URI` — MongoDB Atlas connection string (use a user with restricted privileges).
   * `JWT_SECRET` — secure random secret for access tokens.
   * `JWT_REFRESH_SECRET` — separate secret for refresh tokens.
-  * `RESSEND_API_KEY` — API key for ResSend.
-  * `NEXT_PUBLIC_BASE_URL` — `https://jiujitsu.com`
+  * `RESEND_API_KEY` — API key for Resend.
+  * `NEXT_PUBLIC_BASE_URL` — `https://rollmetric.com`
   * `NODE_ENV=production`
 * Netlify Functions: all Next.js API routes will become serverless functions. Ensure connection pooling to MongoDB is done in a serverless-friendly way (reuse global client to avoid connection storms).
 
@@ -273,7 +273,7 @@ Before declaring “production-ready” ensure **all** below pass:
 **MVP (must do before public use)**
 
 1. Implement user collection, signup/login endpoints, bcrypt and JWT + refresh cookie flow (server).
-2. Add email verification (ResSend) + verify endpoint + resend.
+2. Add email verification (Resend) + verify endpoint + resend.
 3. Persist sessions to `sessions` collection, add start/finish endpoints, ensure per-user scoping.
 4. Update frontend flows to use server endpoints and cookies.
 5. Add TTL index for sessions (90 days).
@@ -318,7 +318,7 @@ POST /api/sessions/:id/finish
 ## 16) Additional operational notes & recommendations
 
 * Use a dedicated MongoDB user with least privilege for the app (no admin privileges).
-* For ResSend, verify domain sending policy, and ensure verification emails come from a friendly address like `no-reply@jiujitsu.com`.
+* For Resend, verify domain sending policy, and ensure verification emails come from a friendly address like `no-reply@rollmetric.com`.
 * Keep JWT secrets rotated periodically; store them in secret manager if possible.
 * For Netlify free tier, watch function cold starts and connection reuse; use global client caching.
 * For quick debugging, keep a separate staging deployment before pushing to production domain.
