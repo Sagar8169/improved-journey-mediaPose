@@ -185,9 +185,8 @@ export class ApiClient {
   }
 
   static async verifyEmail(token: string): Promise<{ message: string }> {
-    return apiRequest('/api/auth/verify-email', {
-      method: 'POST',
-      body: JSON.stringify({ token }),
+    return apiRequest(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
     });
   }
 
