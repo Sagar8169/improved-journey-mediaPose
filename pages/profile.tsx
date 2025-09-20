@@ -3,12 +3,12 @@ import { usePoseStore } from '@/components/usePoseStore';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { RequireAuth } from '@/components/RequireAuth';
-import { useAuthStore } from '@/components/authStore';
+import { useAuth } from '@/components/useAuth';
 import { SessionHistory } from '@/components/sessions/SessionHistory';
 
 export default function Profile() {
   const store = usePoseStore();
-  const { currentUser, updateProfile } = useAuthStore();
+  const { user: currentUser } = useAuth();
   const { sessionRecords } = usePoseStore();
   const router = useRouter();
   const [justSavedId, setJustSavedId] = useState<string|null>(null);
@@ -19,12 +19,11 @@ export default function Profile() {
     }
   },[router.isReady, router.query.justSaved]);
   const [edit, setEdit] = useState(false as boolean);
-  const [form, setForm] = useState({ name: currentUser?.name || '', email: currentUser?.email || '', password: currentUser?.password || '' });
+  const [form, setForm] = useState({ name: currentUser?.displayName || '', email: currentUser?.email || '' });
   const [err, setErr] = useState<string|null>(null);
   const onSave = () => {
-    setErr(null);
-    const res = updateProfile({ name: form.name, email: form.email, password: form.password });
-    if (!res.ok) setErr((res as any).error); else setEdit(false);
+    setErr("Profile editing not yet implemented for server auth");
+    setEdit(false);
   };
   const sessionAge = store.lastUpdated ? Math.round((Date.now() - store.lastUpdated)/1000) : null;
   return (
@@ -51,13 +50,10 @@ export default function Profile() {
               <label className="block">Email
                 <input disabled={!edit} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} className="mt-1 w-full bg-panel border border-panel focus:border-accent/50 rounded px-3 py-3 text-base disabled:opacity-60" />
               </label>
-              <label className="block">Password
-                <input disabled={!edit} type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} className="mt-1 w-full bg-panel border border-panel focus:border-accent/50 rounded px-3 py-3 text-base disabled:opacity-60" />
-              </label>
               {err && <p className="text-red-400 text-[10px]">{err}</p>}
               {edit && <div className="flex flex-col sm:flex-row gap-2 pt-2 w-full">
                 <button onClick={onSave} className="w-full sm:w-auto text-base px-4 py-3 rounded btn-accent">Save</button>
-                <button onClick={()=>{setEdit(false); setForm({ name: currentUser!.name, email: currentUser!.email, password: currentUser!.password });}} className="w-full sm:w-auto text-base px-4 py-3 rounded bg-panel border border-accent/20 hover:bg-accent/10">Cancel</button>
+                <button onClick={()=>{setEdit(false); setForm({ name: currentUser!.displayName, email: currentUser!.email });}} className="w-full sm:w-auto text-base px-4 py-3 rounded bg-panel border border-accent/20 hover:bg-accent/10">Cancel</button>
               </div>}
               <p className="text-[10px] text-neutral-500">Demo credentials always available: demo@jiujitsu.com / demo123</p>
             </div>
