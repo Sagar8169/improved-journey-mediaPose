@@ -16,11 +16,11 @@ export const config = {
 
 async function finishSessionHandler(
   req: any, // AuthenticatedRequest
-  res: NextApiResponse<ApiResponse<{ message: string }>>
+  res: NextApiResponse<ApiResponse<{ message: string } | { id: string; startAt: string; endAt?: string; durationMs?: number; qualityFlag?: string; summary?: Record<string, any>; rawReport?: Record<string, any> }>>
 ) {
-  // Only allow POST method
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
+  // Support GET for session details and POST for finishing session
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    res.setHeader('Allow', ['GET', 'POST']);
     return res.status(405).json({
       success: false,
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' }
@@ -53,6 +53,40 @@ async function finishSessionHandler(
     });
   }
 
+  // Handle GET: return session detail for this user
+  if (req.method === 'GET') {
+    try {
+      const { sessions } = await getCollections();
+      const sessionObjectId = new ObjectId(sessionId);
+      const session = await sessions.findOne({ 
+        _id: sessionObjectId,
+        userId: new ObjectId(req.user.id)
+      });
+      if (!session) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'SESSION_NOT_FOUND', message: 'Session not found or access denied' }
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: session._id.toString(),
+          startAt: session.startAt?.toISOString?.() ?? new Date(session.startAt).toISOString(),
+          endAt: session.endAt ? (session.endAt.toISOString?.() ?? new Date(session.endAt).toISOString()) : undefined,
+          durationMs: session.durationMs,
+          qualityFlag: session.qualityFlag,
+          summary: session.summary,
+          rawReport: session.rawReport,
+        }
+      });
+    } catch (error) {
+      console.error('Get session detail error:', error);
+      throw error;
+    }
+  }
+
+  // POST: finish session
   // Validate request body
   const validatedBody = validateBody(FinishSessionSchema, req.body);
   if ('success' in validatedBody && !validatedBody.success) {

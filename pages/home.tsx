@@ -3,12 +3,12 @@ import Image from 'next/image';
 import { useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { RequireAuth } from '@/components/RequireAuth';
-import { useAuthStore } from '@/components/authStore';
+import { useAuth } from '@/components/useAuth';
 import { usePoseStore } from '@/components/usePoseStore';
 import { SessionHistory } from '@/components/sessions/SessionHistory';
 
 export default function HomePage() {
-  const user = useAuthStore(s => s.currentUser);
+  const { user } = useAuth();
   const history = usePoseStore(s => s.sessionHistory);
 
   const insights = useMemo(() => {

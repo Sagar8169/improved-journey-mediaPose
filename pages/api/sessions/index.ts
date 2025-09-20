@@ -57,6 +57,9 @@ async function sessionsListHandler(
       durationMs: session.durationMs,
       qualityFlag: session.qualityFlag,
       summary: session.summary,
+      // convenience fields for UI parity with legacy store, if present in rawReport
+      reps: (session.rawReport?.totalReps) ?? undefined,
+      detectionRate: (session.rawReport?.detectionRate) ?? undefined,
     }));
 
     const response: SessionListResponse = {

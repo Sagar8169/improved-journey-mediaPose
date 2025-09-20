@@ -89,6 +89,9 @@ export interface SessionSummary {
   durationMs?: number;
   qualityFlag?: string;
   summary?: Record<string, any>;
+  // derived convenience fields
+  reps?: number;
+  detectionRate?: number;
 }
 
 export interface SessionListResponse {

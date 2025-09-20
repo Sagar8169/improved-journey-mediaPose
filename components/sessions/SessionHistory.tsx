@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { sessions } from '@/lib/apiClient';
-import { SessionSummary } from '@/lib/server/validation';
-import { useAuth } from '@/components/useAuth';
+import React, { useEffect, useMemo, useState } from 'react';
+import { sessions as apiSessions, ApiError } from '@/lib/apiClient';
+import type { SessionSummary } from '@/lib/server/validation';
+import type { SessionRecord } from '@/lib/metrics/types';
 
 function formatDuration(ms?: number) { 
   if (!ms && ms !== 0) return '—'; 
@@ -11,8 +11,8 @@ function formatDuration(ms?: number) {
   return `${m}m ${s}s`; 
 }
 
-function timeAgo(dateString: string) { 
-  const d = Date.now() - new Date(dateString).getTime(); 
+function timeAgo(ts: number) { 
+  const d = Date.now() - ts; 
   const mins = Math.floor(d / 60000); 
   if (mins < 1) return 'just now'; 
   if (mins < 60) return mins + 'm ago'; 
@@ -23,93 +23,62 @@ function timeAgo(dateString: string) {
 }
 
 export const SessionHistory = () => {
-  const { isAuthenticated } = useAuth();
-  const [sessions_data, setSessions] = useState<SessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [filterLowQ, setFilterLowQ] = useState(true);
-  const [page, setPage] = useState(1);
-  
-  const filtered = useMemo(() => 
-    sessions_data.filter(s => filterLowQ ? s.qualityFlag !== 'low' : true), 
-    [sessions_data, filterLowQ]
-  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Cache of detailed raw reports per session id
+  const [details, setDetails] = useState<Record<string, { rawReport?: SessionRecord; summary?: any }>>({});
 
-  const loadSessions = async (pageNum: number = 1) => {
-    if (!isAuthenticated) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await sessions.list({
-        page: pageNum,
-        limit: 20,
-        hideLowQuality: filterLowQ
-      });
-      
-      setSessions(response.sessions);
-    } catch (error: any) {
-      setError(error.message || 'Failed to load sessions');
-      console.error('Error loading sessions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load sessions when component mounts or filters change
+  // fetch total count (without filtering) to preserve "x of y" UI
   useEffect(() => {
-    loadSessions(page);
-  }, [isAuthenticated, filterLowQ, page]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await apiSessions.list({ page: 1, limit: 1, hideLowQuality: false });
+        if (!cancelled) setTotalCount(resp.pagination.total);
+      } catch (e) {
+        // ignore count errors
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  const viewSessionDetail = async (sessionId: string) => {
-    if (expanded === sessionId) {
-      setExpanded(null);
-      return;
-    }
-    
-    try {
-      // For now just toggle expansion
-      // In the future, we could load detailed data here
-      setExpanded(sessionId);
-    } catch (error) {
-      console.error('Error loading session detail:', error);
+  // fetch sessions based on filter
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    apiSessions.list({ page: 1, limit: 50, hideLowQuality: filterLowQ })
+      .then(resp => { if (!cancelled) setSessions(resp.sessions || []); })
+      .catch((e: any) => { if (!cancelled) setError(e instanceof ApiError ? e.message : 'Failed to load sessions'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [filterLowQ]);
+
+  const toggleExpanded = async (sessionId: string) => {
+    const next = expanded === sessionId ? null : sessionId;
+    setExpanded(next);
+    if (next && !details[next]) {
+      try {
+        const detail = await apiSessions.get(next);
+        setDetails(d => ({ ...d, [next]: { rawReport: detail.rawReport as SessionRecord | undefined, summary: detail.summary } }));
+      } catch (e) {
+        // ignore detail errors for now
+      }
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="text-xs text-neutral-500">
-        Please log in to view your session history.
-      </div>
-    );
-  }
-
-  if (loading && sessions_data.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
-        <span className="ml-2 text-xs text-neutral-500">Loading sessions...</span>
-      </div>
-    );
+  if (loading && sessions.length === 0) {
+    return <div className="text-xs text-neutral-500">Loading sessions…</div>;
   }
 
   if (error) {
-    return (
-      <div className="text-xs text-red-400 bg-red-900/20 p-4 rounded border border-red-500/30">
-        Error loading sessions: {error}
-        <button 
-          onClick={() => loadSessions(page)} 
-          className="ml-2 text-accent hover:underline"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <div className="text-xs text-red-400">{error}</div>;
   }
 
-  if (!sessions_data.length) {
+  if (!sessions.length) {
     return (
       <div className="text-xs text-neutral-500">
         No training sessions yet. Complete a drill to see your session history here.
@@ -127,20 +96,13 @@ export const SessionHistory = () => {
               type="checkbox" 
               className="accent-emerald-500" 
               checked={filterLowQ} 
-              onChange={e => {
-                setFilterLowQ(e.target.checked);
-                setPage(1);
-              }} 
+              onChange={e => setFilterLowQ(e.target.checked)} 
             />
             Hide Low Quality
           </label>
-          <button
-            onClick={() => loadSessions(page)}
-            className="text-[11px] text-accent hover:underline"
-            disabled={loading}
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <span className="text-[11px] text-neutral-500">
+            {sessions.length} of {totalCount || sessions.length} sessions
+          </span>
         </div>
       </div>
       
@@ -150,87 +112,140 @@ export const SessionHistory = () => {
             <tr className="text-left">
               <th className="py-2 px-3">Time</th>
               <th className="py-2 px-3">Duration</th>
+              <th className="py-2 px-3">Reps</th>
+              <th className="py-2 px-3">Detection</th>
               <th className="py-2 px-3">Quality</th>
-              <th className="py-2 px-3">Summary</th>
+              <th className="py-2 px-3">Score</th>
               <th className="py-2 px-3"></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map(session => (
-              <React.Fragment key={session.id}>
-                <tr className="border-t border-neutral-800 hover:bg-neutral-900/40">
-                  <td className="py-2 px-3 whitespace-nowrap">{timeAgo(session.startAt)}</td>
-                  <td className="py-2 px-3">{formatDuration(session.durationMs)}</td>
-                  <td className="py-2 px-3">
-                    {session.qualityFlag && (
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-xs ${
-                        session.qualityFlag === 'low' 
-                          ? 'bg-yellow-600/30 text-yellow-300' 
-                          : session.qualityFlag === 'high'
-                          ? 'bg-green-600/30 text-green-300'
-                          : 'bg-neutral-700 text-neutral-300'
-                      }`}>
-                        {session.qualityFlag.toUpperCase()}
+            {sessions.map(session => {
+              const startMs = Date.parse(session.startAt);
+              const durationMs = session.durationMs;
+              const detectionRatePct = session.detectionRate != null ? Math.round(session.detectionRate * 100) : 0;
+              const q = session.qualityFlag || 'unknown';
+              let qualityColor = 'bg-neutral-700 text-neutral-300';
+              if (q === 'good') qualityColor = 'bg-green-600/30 text-green-300';
+              else if (q === 'low') qualityColor = 'bg-yellow-600/30 text-yellow-300';
+              const overallScore = session.summary?.summary?.overallSessionScorecard;
+
+              const isExpanded = expanded === session.id;
+              const detail = details[session.id];
+              const rr = detail?.rawReport;
+
+              return (
+                <React.Fragment key={session.id}>
+                  <tr className="border-t border-neutral-800 hover:bg-neutral-900/40">
+                    <td className="py-2 px-3 whitespace-nowrap">{timeAgo(startMs)}</td>
+                    <td className="py-2 px-3">{formatDuration(durationMs)}</td>
+                    <td className="py-2 px-3 text-emerald-400">{session.reps ?? rr?.totalReps ?? 0}</td>
+                    <td className="py-2 px-3">{detectionRatePct}%</td>
+                    <td className="py-2 px-3">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-xs ${qualityColor}`}>
+                        {(q || 'UNKNOWN').toUpperCase()}
                       </span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-neutral-400">
-                    {session.summary ? (
-                      <span className="truncate max-w-32">
-                        {typeof session.summary === 'object' 
-                          ? Object.keys(session.summary).length + ' metrics'
-                          : 'Available'
-                        }
-                      </span>
-                    ) : (
-                      <span className="text-neutral-600">No summary</span>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    <button 
-                      onClick={() => viewSessionDetail(session.id)} 
-                      className="text-emerald-400 hover:text-cyan-300"
-                    >
-                      {expanded === session.id ? 'Hide' : 'View'}
-                    </button>
-                  </td>
-                </tr>
-                {expanded === session.id && (
-                  <tr>
-                    <td colSpan={5} className="px-3 pb-4 bg-neutral-900/20">
-                      <div className="mt-2 p-3 bg-neutral-800/50 rounded text-xs">
-                        <div className="grid grid-cols-2 gap-2 text-neutral-400">
-                          <div>
-                            <strong>Started:</strong> {new Date(session.startAt).toLocaleString()}
-                          </div>
-                          {session.endAt && (
+                    </td>
+                    <td className="py-2 px-3">{overallScore ? Math.round(overallScore) : '—'}</td>
+                    <td className="py-2 px-3 text-right">
+                      <button 
+                        onClick={() => toggleExpanded(session.id)} 
+                        className="text-emerald-400 hover:text-cyan-300"
+                      >
+                        {isExpanded ? 'Hide' : 'View'}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={7} className="px-3 pb-4 bg-neutral-900/20">
+                        <div className="mt-2 p-3 bg-neutral-800/50 rounded text-xs">
+                          <div className="grid grid-cols-2 gap-4 text-neutral-400 mb-4">
                             <div>
-                              <strong>Ended:</strong> {new Date(session.endAt).toLocaleString()}
+                              <strong>Started:</strong> {new Date(session.startAt).toLocaleString()}
                             </div>
-                          )}
-                          <div>
-                            <strong>Session ID:</strong> {session.id}
-                          </div>
-                          {session.qualityFlag && (
+                            {session.endAt && (
+                              <div>
+                                <strong>Ended:</strong> {new Date(session.endAt).toLocaleString()}
+                              </div>
+                            )}
                             <div>
-                              <strong>Quality:</strong> {session.qualityFlag}
+                              <strong>Session ID:</strong> {session.id}
+                            </div>
+                            {rr && (
+                              <>
+                                <div>
+                                  <strong>User:</strong> {rr.userId}
+                                </div>
+                                <div>
+                                  <strong>Model Complexity:</strong> {rr.modelComplexity}
+                                </div>
+                                <div>
+                                  <strong>Mirror Used:</strong> {rr.mirrorUsed ? 'Yes' : 'No'}
+                                </div>
+                                <div>
+                                  <strong>Frame Count:</strong> {rr.frameCount}
+                                </div>
+                                <div>
+                                  <strong>Detection Frames:</strong> {rr.detectionFrames}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          {(detail?.summary || session.summary) && (
+                            <div className="mt-4">
+                              <strong className="text-neutral-300">Session Report:</strong>
+                              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {(() => { const rep = (detail?.summary || session.summary); return rep?.summary ? (
+                                  <div>
+                                    <strong className="text-accent">Summary:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Overall Score: {rep.summary.overallSessionScorecard || '—'}</div>
+                                      <div>Reaction Speed: {rep.summary.reactionSpeed ? `${rep.summary.reactionSpeed}s` : '—'}</div>
+                                      <div>Quality: {q}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary); return rep?.corePositionalMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Positional:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Escapes: {rep.corePositionalMetrics.escapes?.attempts || 0} attempts, {rep.corePositionalMetrics.escapes?.successPercent || 0}% success</div>
+                                      <div>Reversals: {rep.corePositionalMetrics.reversals?.count || 0} total, {rep.corePositionalMetrics.reversals?.successPercent || 0}% success</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {rr && (rr.shoulderSym?.count || rr.kneeSym?.count) && (
+                                  <div>
+                                    <strong className="text-accent">Symmetry:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      {rr.shoulderSym?.count ? (
+                                        <div>Shoulder: {Math.round(rr.shoulderSym.mean)}° (±{Math.round(Math.sqrt(rr.shoulderSym.m2 / rr.shoulderSym.count))})</div>
+                                      ) : null}
+                                      {rr.kneeSym?.count ? (
+                                        <div>Knee: {Math.round(rr.kneeSym.mean)}° (±{Math.round(Math.sqrt(rr.kneeSym.m2 / rr.kneeSym.count))})</div>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <details className="mt-4">
+                                <summary className="text-accent cursor-pointer hover:text-cyan-300">Full Report JSON</summary>
+                                <pre className="text-[10px] text-neutral-500 mt-2 whitespace-pre-wrap overflow-auto max-h-64">
+                                  {JSON.stringify(detail?.summary || session.summary, null, 2)}
+                                </pre>
+                              </details>
                             </div>
                           )}
                         </div>
-                        {session.summary && (
-                          <div className="mt-2 pt-2 border-t border-neutral-700">
-                            <strong className="text-neutral-300">Summary:</strong>
-                            <pre className="text-[10px] text-neutral-500 mt-1 whitespace-pre-wrap">
-                              {JSON.stringify(session.summary, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

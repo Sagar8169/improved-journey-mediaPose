@@ -5,10 +5,11 @@ import { useEffect, useState } from 'react';
 import { RequireAuth } from '@/components/RequireAuth';
 import { useAuth } from '@/components/useAuth';
 import { SessionHistory } from '@/components/sessions/SessionHistory';
+import { sessions as apiSessions, ApiError } from '@/lib/apiClient';
 
 export default function Account() {
   const store = usePoseStore();
-  const history = usePoseStore(s=>s.sessionHistory);
+  const [dbTotals, setDbTotals] = useState<{ sessions: number; reps: number; postureIssues: number } | null>(null);
   const { user: currentUser } = useAuth();
   const router = useRouter();
   const [justSavedId, setJustSavedId] = useState<string|null>(null);
@@ -38,6 +39,30 @@ export default function Account() {
   
   const [err, setErr] = useState<string|null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Load overview stats from persisted (DB) history
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await apiSessions.list({ page: 1, limit: 100, hideLowQuality: false });
+        const sessions = resp.sessions || [];
+        const totals = sessions.reduce((acc, s) => {
+          const rr: any = undefined; // we avoid extra detail calls here
+          acc.sessions += 1;
+          acc.reps += (s.reps ?? 0);
+          // postureIssues lives in rawReport; without detail, we approximate from summary if available
+          const pi = (s.summary as any)?.transitionMetrics?.errorCounts?.positionalMistake;
+          acc.postureIssues += typeof pi === 'number' ? pi : 0;
+          return acc;
+        }, { sessions: 0, reps: 0, postureIssues: 0 });
+        if (!cancelled) setDbTotals(totals);
+      } catch (e) {
+        // If loading fails, leave dbTotals null; UI will fall back to store
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   
   const onSave = async () => {
     setErr(null);
@@ -69,15 +94,15 @@ export default function Account() {
   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-10">
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Total Sessions</p>
-            <p className="text-2xl font-semibold">{history.length || store.sessions}</p>
+            <p className="text-2xl font-semibold">{dbTotals?.sessions ?? store.sessions}</p>
           </div>
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Total Reps</p>
-            <p className="text-2xl font-semibold text-emerald-400">{(history.length? history.reduce((sum, r)=> sum + (r.totalReps||0), 0) : store.totalReps)}</p>
+            <p className="text-2xl font-semibold text-emerald-400">{dbTotals?.reps ?? store.totalReps}</p>
           </div>
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Posture Issues</p>
-            <p className="text-2xl font-semibold text-yellow-400">{(history.length? history.reduce((sum, r)=> sum + (r.postureIssues||0), 0) : store.postureIssues)}</p>
+            <p className="text-2xl font-semibold text-yellow-400">{dbTotals?.postureIssues ?? store.postureIssues}</p>
           </div>
         </div>
         {/* Session History */}

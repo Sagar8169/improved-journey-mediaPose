@@ -210,7 +210,7 @@ export class ApiClient {
     request: FinishSessionRequest
   ): Promise<{ message: string }> {
     return apiRequest(`/api/sessions/${sessionId}`, {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify(request),
     });
   }
