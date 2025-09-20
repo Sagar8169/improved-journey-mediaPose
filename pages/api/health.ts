@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { pingDatabase } from '@/lib/server/db';
 
 interface HealthCheckResponse {
   status: 'ok' | 'error';
@@ -11,9 +12,13 @@ interface HealthCheckResponse {
     total: number;
     percentage: number;
   };
+  database?: {
+    connected: boolean;
+    latencyMs: number;
+  };
 }
 
-export default function handler(
+export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<HealthCheckResponse>
 ) {
@@ -50,11 +55,34 @@ export default function handler(
       };
     }
 
+    // Check database connectivity
+    try {
+      const dbStatus = await pingDatabase();
+      healthData.database = {
+        connected: dbStatus.connected,
+        latencyMs: dbStatus.latencyMs,
+      };
+
+      // Set overall status based on critical services
+      if (!dbStatus.connected) {
+        healthData.status = 'error';
+      }
+    } catch (dbError) {
+      console.error('Database health check failed:', dbError);
+      healthData.database = {
+        connected: false,
+        latencyMs: -1,
+      };
+      healthData.status = 'error';
+    }
+
     // Set appropriate headers
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Content-Type', 'application/json');
 
-    res.status(200).json(healthData);
+    // Return appropriate status code
+    const statusCode = healthData.status === 'ok' ? 200 : 503;
+    res.status(statusCode).json(healthData);
   } catch (error) {
     console.error('Health check failed:', error);
     

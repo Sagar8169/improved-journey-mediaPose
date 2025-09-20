@@ -1,22 +1,24 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
-import { useAuthStore } from '@/components/authStore';
+import { useAuth } from '@/components/useAuth';
 import { createPortal } from 'react-dom';
 
 type Mode = 'login' | 'signup';
 
 export default function Landing() {
   const router = useRouter();
-  const { login, signup, currentUser } = useAuthStore();
+  const { login, signup, user, isLoading, error, clearError } = useAuth();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>('login');
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '' });
-  const [error, setError] = useState<string | null>(null);
+  const [signupForm, setSignupForm] = useState({ displayName: '', email: '', password: '' });
+  const [localError, setLocalError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+  
   useEffect(() => {
     if (!mounted) return;
     if (open) {
@@ -26,25 +28,47 @@ export default function Landing() {
     }
   }, [open, mounted]);
 
+  // Clear errors when switching modes
+  useEffect(() => {
+    setLocalError(null);
+    clearError();
+  }, [mode, clearError]);
+
   const openAuth = (initial: Mode) => {
     setMode(initial);
     setOpen(true);
+    setLocalError(null);
+    setShowSuccess(false);
+    clearError();
   };
 
-  const onLogin = (e: FormEvent) => {
+  const onLogin = async (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    const res = login(loginForm.email, loginForm.password);
-    if (!res.ok) setError((res as any).error);
-    else router.push('/home');
+    setLocalError(null);
+    
+    const result = await login(loginForm);
+    if (result.success) {
+      setOpen(false);
+      router.push('/home');
+    } else {
+      setLocalError(result.error || 'Login failed');
+    }
   };
-  const onSignup = (e: FormEvent) => {
+
+  const onSignup = async (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    const res = signup(signupForm);
-    if (!res.ok) setError((res as any).error);
-    else router.push('/home');
+    setLocalError(null);
+    
+    const result = await signup(signupForm);
+    if (result.success) {
+      setShowSuccess(true);
+      setSignupForm({ displayName: '', email: '', password: '' });
+    } else {
+      setLocalError(result.error || 'Signup failed');
+    }
   };
+
+  const displayError = localError || error;
 
   return (
     <div className="min-h-[100svh] bg-bg text-brandText grid place-items-center px-6 relative overflow-hidden">
@@ -78,7 +102,7 @@ export default function Landing() {
 
       {/* Modal (portal to body to avoid stacking issues) */}
       {mounted && open && typeof document !== 'undefined' && createPortal(
-  <div id="auth-modal" role="dialog" aria-modal="true" className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+        <div id="auth-modal" role="dialog" aria-modal="true" className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="relative z-10 w-full max-w-md bg-panel border border-accent/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
@@ -87,7 +111,21 @@ export default function Landing() {
               </h2>
               <button aria-label="Close" onClick={() => setOpen(false)} className="text-accent hover:opacity-80">✕</button>
             </div>
-            {mode === 'login' ? (
+
+            {showSuccess && mode === 'signup' ? (
+              <div className="space-y-4">
+                <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 text-green-300 text-sm">
+                  <h3 className="font-medium mb-1">Account Created Successfully!</h3>
+                  <p className="text-xs">Please check your email to verify your account before logging in.</p>
+                </div>
+                <button
+                  onClick={() => { setShowSuccess(false); setMode('login'); }}
+                  className="w-full btn-accent py-3 rounded-xl"
+                >
+                  Continue to Login
+                </button>
+              </div>
+            ) : mode === 'login' ? (
               <form onSubmit={onLogin} className="space-y-4">
                 <div>
                   <label className="block text-xs text-brandText/70">Email</label>
@@ -98,6 +136,7 @@ export default function Landing() {
                     onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
                     className="mt-1 w-full bg-[#0f1420] text-brandText border border-accent/20 focus:border-accent/60 rounded-lg px-3 py-2 outline-none"
                     placeholder="you@example.com"
+                    disabled={isLoading}
                   />
                 </div>
                 <div>
@@ -109,11 +148,17 @@ export default function Landing() {
                     onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
                     className="mt-1 w-full bg-[#0f1420] text-brandText border border-accent/20 focus:border-accent/60 rounded-lg px-3 py-2 outline-none"
                     placeholder="Password"
+                    disabled={isLoading}
                   />
                 </div>
-                {error && <p className="text-xs text-red-400">{error}</p>}
-                <button type="submit" className="w-full btn-accent py-3 rounded-xl">Log In</button>
-                <p className="text-[11px] text-center text-brandText/60">Demo: demo@jiujitsu.com / demo123</p>
+                {displayError && <p className="text-xs text-red-400">{displayError}</p>}
+                <button 
+                  type="submit" 
+                  className="w-full btn-accent py-3 rounded-xl disabled:opacity-50" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Logging In...' : 'Log In'}
+                </button>
               </form>
             ) : (
               <form onSubmit={onSignup} className="space-y-4">
@@ -121,10 +166,11 @@ export default function Landing() {
                   <label className="block text-xs text-brandText/70">Name</label>
                   <input
                     required
-                    value={signupForm.name}
-                    onChange={e => setSignupForm(f => ({ ...f, name: e.target.value }))}
+                    value={signupForm.displayName}
+                    onChange={e => setSignupForm(f => ({ ...f, displayName: e.target.value }))}
                     className="mt-1 w-full bg-[#0f1420] text-brandText border border-accent/20 focus:border-accent/60 rounded-lg px-3 py-2 outline-none"
                     placeholder="Your name"
+                    disabled={isLoading}
                   />
                 </div>
                 <div>
@@ -136,6 +182,7 @@ export default function Landing() {
                     onChange={e => setSignupForm(f => ({ ...f, email: e.target.value }))}
                     className="mt-1 w-full bg-[#0f1420] text-brandText border border-accent/20 focus:border-accent/60 rounded-lg px-3 py-2 outline-none"
                     placeholder="you@example.com"
+                    disabled={isLoading}
                   />
                 </div>
                 <div>
@@ -146,21 +193,35 @@ export default function Landing() {
                     value={signupForm.password}
                     onChange={e => setSignupForm(f => ({ ...f, password: e.target.value }))}
                     className="mt-1 w-full bg-[#0f1420] text-brandText border border-accent/20 focus:border-accent/60 rounded-lg px-3 py-2 outline-none"
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
+                    disabled={isLoading}
                   />
                 </div>
-                {error && <p className="text-xs text-red-400">{error}</p>}
-                <button type="submit" className="w-full btn-accent py-3 rounded-xl">Sign Up</button>
+                {displayError && <p className="text-xs text-red-400">{displayError}</p>}
+                <button 
+                  type="submit" 
+                  className="w-full btn-accent py-3 rounded-xl disabled:opacity-50" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Creating Account...' : 'Sign Up'}
+                </button>
               </form>
             )}
-            <div className="mt-5 text-center">
-              <button
-                onClick={() => { setError(null); setMode(m => (m === 'login' ? 'signup' : 'login')); }}
-                className="text-sm text-white/80 hover:text-white"
-              >
-                {mode === 'login' ? 'Need an account? Create one' : 'Have an account? Log in'}
-              </button>
-            </div>
+
+            {!showSuccess && (
+              <div className="mt-5 text-center">
+                <button
+                  onClick={() => { 
+                    clearError(); 
+                    setLocalError(null); 
+                    setMode(m => (m === 'login' ? 'signup' : 'login')); 
+                  }}
+                  className="text-sm text-white/80 hover:text-white"
+                >
+                  {mode === 'login' ? 'Need an account? Create one' : 'Have an account? Log in'}
+                </button>
+              </div>
+            )}
           </div>
         </div>,
         document.body

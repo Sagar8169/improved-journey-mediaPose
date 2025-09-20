@@ -4,3 +4,28 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Configure serverless function timeouts for API routes
+[functions]
+  # Increase timeout for database operations
+  timeout = 26
+
+# API route redirects (handled by Next.js plugin, but documented for clarity)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/nextjs/:splat"
+  status = 200
+
+# Security headers
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Caching configuration
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
