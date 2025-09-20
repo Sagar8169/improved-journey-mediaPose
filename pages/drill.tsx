@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { RequireAuth } from '@/components/RequireAuth';
 import { usePoseStore } from '@/components/usePoseStore';
-import { useAuthStore } from '@/components/authStore';
+import { useAuth } from '@/components/useAuth';
 import { useRouter } from 'next/router';
 import { createPortal } from 'react-dom';
+import { sessions } from '@/lib/apiClient';
 
 // Lazy-load mediapipe libs (browser only)
 const loadPoseStack = () => Promise.all([
@@ -51,10 +52,11 @@ export default function DrillPage() {
   const suggestionsShownRef = useRef<Set<string>>(new Set());
 
   const store = usePoseStore();
-  const { currentUser } = useAuthStore();
+  const { user: currentUser } = useAuth();
   const router = useRouter();
   const postureStartRef = useRef(0);
   const sessionActiveRef = useRef(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const lastTs = useRef<number>(performance.now());
   const poseRef = useRef<any>(null);
@@ -190,7 +192,23 @@ export default function DrillPage() {
     if (!sessionActiveRef.current) {
       store.startSession(); // legacy simple summary
       if (currentUser) {
-        store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
+        try {
+          // Start database session
+          const sessionResponse = await sessions.start({
+            drillType: 'pose-detection',
+            deviceInfo: {
+              userAgent: navigator.userAgent,
+              timestamp: new Date().toISOString(),
+            },
+            startAt: new Date().toISOString(),
+          });
+          setCurrentSessionId(sessionResponse.sessionId);
+          store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
+        } catch (error) {
+          console.error('Failed to start session:', error);
+          // Fall back to local tracking only
+          store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
+        }
       }
       postureStartRef.current = store.postureIssues;
       sessionActiveRef.current = true;
@@ -199,7 +217,7 @@ export default function DrillPage() {
     }
   };
 
-  const stop = (final=false) => {
+  const stop = async (final=false) => {
     cameraRef.current?.stop();
     cameraRef.current = null;
     if (final) {
@@ -220,12 +238,30 @@ export default function DrillPage() {
       const rec = store.finalizeSession({ reps: repCount, postureIssuesDelta: postureDelta });
       const detailed = store.endSessionTracking();
       sessionActiveRef.current = false;
-  // reset suggestions on full session end
-  suggestionsShownRef.current.clear();
-  if (suggestionTimeoutRef.current) { window.clearTimeout(suggestionTimeoutRef.current); suggestionTimeoutRef.current = null; }
-  setSuggestion(null);
+      
+      // Save to database if we have a session ID
+      if (currentSessionId && detailed) {
+        try {
+          await sessions.finish(currentSessionId, {
+            finalizedReport: detailed,
+            endAt: new Date().toISOString(),
+          });
+          console.log('Session saved to database:', currentSessionId);
+        } catch (error) {
+          console.error('Failed to save session to database:', error);
+        }
+      }
+      
+      // reset suggestions on full session end
+      suggestionsShownRef.current.clear();
+      if (suggestionTimeoutRef.current) { window.clearTimeout(suggestionTimeoutRef.current); suggestionTimeoutRef.current = null; }
+      setSuggestion(null);
+      
+      // Clear session state
+      setCurrentSessionId(null);
+      
       if (rec) {
-  router.push(`/account?justSaved=${encodeURIComponent(rec.id)}`);
+        router.push(`/account?justSaved=${encodeURIComponent(rec.id)}`);
       }
     }
   };
@@ -233,26 +269,41 @@ export default function DrillPage() {
   // Toggle between front/back cameras. If running, restart stream with new facing.
   const toggleCameraFacing = async () => {
     if (cameraSwitchBlocked) return;
+    
+    console.log('Camera toggle requested. Current facing:', cameraFacing);
+    
     // Check available cameras before attempting to switch
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      console.log('Available video devices:', videoInputs.length, videoInputs);
+      
       if (videoInputs.length <= 1) {
         setCameraNotice('No other camera was found on this device. Please reload the page and try again.');
         setCameraSwitchBlocked(true);
+        console.warn('Only one camera found, blocking switch');
         return;
       }
     } catch (e) {
       // If enumeration fails, proceed with existing toggle logic as a best-effort
       console.warn('enumerateDevices failed; proceeding with toggle', e);
     }
+    
     const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
+    console.log('Switching camera to:', next);
     setCameraFacing(next);
+    
     // Do not auto-toggle mirror; keep user preference stable across camera changes.
     if (running) {
       // Gracefully stop without tearing down Pose, then restart with the next facing.
-      try { stop(false); } catch {}
+      try { 
+        console.log('Restarting camera with new facing...');
+        stop(false); 
+      } catch (e) {
+        console.warn('Error stopping camera:', e);
+      }
       await start(next);
+      console.log('Camera restart complete');
     }
   };
 
@@ -553,8 +604,8 @@ export default function DrillPage() {
           <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
             <button onClick={()=> running ? stop() : start()} className="btn-accent w-full sm:w-auto px-6 py-3 rounded-2xl text-base min-w-[140px]">{running? 'Pause':'Resume'}</button>
             <button onClick={()=> stop(true)} disabled={!sessionActiveRef.current} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-base min-w-[140px]">End Session</button>
-            <button onClick={toggleCameraFacing} disabled={cameraSwitchBlocked} className="md:hidden w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 disabled:opacity-40 text-base min-w-[140px]" aria-label="Toggle front/back camera">
-              Flip Camera
+            <button onClick={toggleCameraFacing} disabled={cameraSwitchBlocked} className="sm:hidden w-full px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 disabled:opacity-40 text-base min-w-[140px]" aria-label="Toggle front/back camera">
+              {cameraFacing === 'user' ? 'Back Camera' : 'Front Camera'}
             </button>
             <button onClick={()=> setControlsOpen(true)} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 text-base min-w-[140px]">Controls</button>
           </div>
