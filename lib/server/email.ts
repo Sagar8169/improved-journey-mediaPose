@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@rollmetric.com';
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://frabjous-marshmallow-44817e.netlify.app';
 
 export async function sendVerificationEmail(to: string, token: string): Promise<void> {
   const verifyUrl = `${BASE_URL}/verify-email?token=${encodeURIComponent(token)}`;
