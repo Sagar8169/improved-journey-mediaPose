@@ -68,6 +68,7 @@ export default function DrillPage() {
   const drawUtilsRef = useRef<{ drawConnectors: any; drawLandmarks: any; POSE_CONNECTIONS: any }|null>(null);
   const lastPostureIssueTs = useRef<number>(0);
   const modulesLoadedRef = useRef(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
   // ---------------- Control Menu State ----------------
   type Skill = 'Beginner' | 'Intermediate' | 'Advanced' | 'Competition-Level' | 'Custom';
@@ -323,18 +324,31 @@ export default function DrillPage() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return; // context unavailable (rare)
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Compute displayed video rectangle within the stage (object-contain)
+    const stage = stageRef.current;
+    const cw = stage?.clientWidth ?? 0;
+    const ch = stage?.clientHeight ?? 0;
+    const vw = video.videoWidth || 1;
+    const vh = video.videoHeight || 1;
+    const s = Math.min(cw / vw, ch / vh) || 1;
+    const dw = Math.round(vw * s);
+    const dh = Math.round(vh * s);
+    const ox = Math.round((cw - dw) / 2);
+    const oy = Math.round((ch - dh) / 2);
+
+    // Size canvas to the displayed video box for perfect alignment
+    if (canvas.width !== dw) canvas.width = dw;
+    if (canvas.height !== dh) canvas.height = dh;
+    const cStyle = canvas.style as CSSStyleDeclaration;
+    cStyle.left = `${ox}px`;
+    cStyle.top = `${oy}px`;
+    cStyle.width = `${dw}px`;
+    cStyle.height = `${dh}px`;
 
     ctx.save();
     ctx.clearRect(0,0,canvas.width, canvas.height);
   if (mirrorRef.current) { ctx.translate(canvas.width,0); ctx.scale(-1,1); }
-    try {
-      ctx.drawImage(video, 0,0, canvas.width, canvas.height);
-    } catch {
-      ctx.restore();
-      return;
-    }
+    // We no longer draw the video frame onto the canvas; the <video> is visible behind with object-contain.
 
     const lms = results.poseLandmarks as any[] | undefined;
     const hasPose = !!lms;
@@ -613,9 +627,14 @@ export default function DrillPage() {
           </div>
 
           {/* Center: Live camera feed with overlay, mobile-first aspect */}
-          <div className="relative w-full aspect-[9/16] md:aspect-video bg-panel rounded-xl overflow-hidden border border-accent/30">
-            <video ref={videoRef} playsInline className="w-full h-full object-cover hidden" />
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+          <div ref={stageRef} className="relative w-full aspect-[9/16] md:aspect-video bg-panel rounded-xl overflow-hidden border border-accent/30">
+            <video
+              ref={videoRef}
+              playsInline
+              className="absolute inset-0 w-full h-full object-contain"
+              style={{ transform: mirror ? 'scaleX(-1)' : 'none', transformOrigin: 'center' }}
+            />
+            <canvas ref={canvasRef} className="absolute" />
             {suggestion && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                 <div className="bg-black/60 px-8 py-6 rounded-2xl border border-accent/40 shadow-2xl max-w-[80%]">
