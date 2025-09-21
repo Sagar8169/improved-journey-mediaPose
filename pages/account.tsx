@@ -1,5 +1,5 @@
 import { Layout } from '@/components/Layout';
-import { usePoseStore } from '@/components/usePoseStore';
+// import { usePoseStore } from '@/components/usePoseStore';  // removed: no local fallback
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { RequireAuth } from '@/components/RequireAuth';
@@ -8,7 +8,7 @@ import { SessionHistory } from '@/components/sessions/SessionHistory';
 import { sessions as apiSessions, ApiError } from '@/lib/apiClient';
 
 export default function Account() {
-  const store = usePoseStore();
+  // const store = usePoseStore(); // removed
   const [dbTotals, setDbTotals] = useState<{ sessions: number; reps: number; postureIssues: number } | null>(null);
   const { user: currentUser } = useAuth();
   const router = useRouter();
@@ -45,20 +45,27 @@ export default function Account() {
     let cancelled = false;
     (async () => {
       try {
-        const resp = await apiSessions.list({ page: 1, limit: 100, hideLowQuality: false });
-        const sessions = resp.sessions || [];
-        const totals = sessions.reduce((acc, s) => {
-          const rr: any = undefined; // we avoid extra detail calls here
+        const limit = 100;
+        let page = 1;
+        const all: any[] = [];
+        while (true) {
+          const resp = await apiSessions.list({ page, limit, hideLowQuality: false });
+          const batch = resp.sessions || [];
+          all.push(...batch);
+          if (batch.length < limit) break;
+          page += 1;
+          if (page > 100) break; // safety cap
+        }
+        const totals = all.reduce((acc, s: any) => {
           acc.sessions += 1;
           acc.reps += (s.reps ?? 0);
-          // postureIssues lives in rawReport; without detail, we approximate from summary if available
-          const pi = (s.summary as any)?.transitionMetrics?.errorCounts?.positionalMistake;
+          const pi = s?.summary?.transitionMetrics?.errorCounts?.positionalMistake;
           acc.postureIssues += typeof pi === 'number' ? pi : 0;
           return acc;
         }, { sessions: 0, reps: 0, postureIssues: 0 });
         if (!cancelled) setDbTotals(totals);
-      } catch (e) {
-        // If loading fails, leave dbTotals null; UI will fall back to store
+      } catch {
+        if (!cancelled) setDbTotals({ sessions: 0, reps: 0, postureIssues: 0 }); // DB-only; no local fallback
       }
     })();
     return () => { cancelled = true; };
@@ -94,15 +101,15 @@ export default function Account() {
   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-10">
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Total Sessions</p>
-            <p className="text-2xl font-semibold">{dbTotals?.sessions ?? store.sessions}</p>
+            <p className="text-2xl font-semibold">{dbTotals ? dbTotals.sessions : '—'}</p>
           </div>
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Total Reps</p>
-            <p className="text-2xl font-semibold text-emerald-400">{dbTotals?.reps ?? store.totalReps}</p>
+            <p className="text-2xl font-semibold text-emerald-400">{dbTotals ? dbTotals.reps : '—'}</p>
           </div>
           <div className="rounded-xl bg-panel border border-accent/20 p-5">
             <p className="text-[11px] uppercase tracking-wide text-neutral-500 mb-1">Posture Issues</p>
-            <p className="text-2xl font-semibold text-yellow-400">{dbTotals?.postureIssues ?? store.postureIssues}</p>
+            <p className="text-2xl font-semibold text-yellow-400">{dbTotals ? dbTotals.postureIssues : '—'}</p>
           </div>
         </div>
         {/* Session History */}
@@ -167,4 +174,3 @@ export default function Account() {
   </RequireAuth>
   );
 }
- 

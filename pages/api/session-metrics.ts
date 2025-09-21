@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { SESSION_SCHEMA_VERSION, SessionReport } from '@/lib/metrics/types';
+import { METRICS_SCHEMA_VERSION, SessionReport } from '@/lib/metrics/types';
 
 type Data = {
 	status: 'ok';
@@ -61,8 +61,8 @@ export default function handler(
 ) {
 	res.status(200).json({
 		status: 'ok',
-		schemaVersion: SESSION_SCHEMA_VERSION,
-		message: 'Session metrics API stub. Client stores per-session reports; integrate DB to persist.',
+			schemaVersion: METRICS_SCHEMA_VERSION,
+			message: 'Session metrics API stub (v2). Client stores aggregated SessionReport; no raw events persisted.',
 		exampleReport,
 	});
 }

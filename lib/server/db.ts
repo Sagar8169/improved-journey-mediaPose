@@ -24,7 +24,10 @@ interface Session {
   endAt?: Date;
   durationMs?: number;
   summary?: Record<string, any>;
-  rawReport: Record<string, any>;
+  // v1 legacy payload, optional for backward compatibility (no longer written for v2)
+  rawReport?: Record<string, any>;
+  // v2 aggregated report (JSON-storable)
+  report?: import('../metrics/types').SessionReport;
   qualityFlag?: 'good' | 'low' | 'discard';
   deviceInfo?: any;
   mediaType?: string;

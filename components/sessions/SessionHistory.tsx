@@ -30,7 +30,7 @@ export const SessionHistory = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Cache of detailed raw reports per session id
-  const [details, setDetails] = useState<Record<string, { rawReport?: SessionRecord; summary?: any }>>({});
+  const [details, setDetails] = useState<Record<string, { rawReport?: SessionRecord; summary?: any; report?: any }>>({});
 
   // fetch total count (without filtering) to preserve "x of y" UI
   useEffect(() => {
@@ -63,7 +63,7 @@ export const SessionHistory = () => {
     if (next && !details[next]) {
       try {
         const detail = await apiSessions.get(next);
-        setDetails(d => ({ ...d, [next]: { rawReport: detail.rawReport as SessionRecord | undefined, summary: detail.summary } }));
+        setDetails(d => ({ ...d, [next]: { rawReport: detail.rawReport as SessionRecord | undefined, summary: detail.summary, report: detail.report } }));
       } catch (e) {
         // ignore detail errors for now
       }
@@ -192,11 +192,11 @@ export const SessionHistory = () => {
                               </>
                             )}
                           </div>
-                          {(detail?.summary || session.summary) && (
+                          {(detail?.summary || session.summary || detail?.report) && (
                             <div className="mt-4">
                               <strong className="text-neutral-300">Session Report:</strong>
                               <div className="mt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {(() => { const rep = (detail?.summary || session.summary); return rep?.summary ? (
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.summary ? (
                                   <div>
                                     <strong className="text-accent">Summary:</strong>
                                     <div className="text-neutral-500 text-xs mt-1">
@@ -207,12 +207,92 @@ export const SessionHistory = () => {
                                   </div>
                                 ) : null; })()}
 
-                                {(() => { const rep = (detail?.summary || session.summary); return rep?.corePositionalMetrics ? (
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.corePositionalMetrics ? (
                                   <div>
                                     <strong className="text-accent">Positional:</strong>
                                     <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Control Time % (by pos): {rep.corePositionalMetrics.positionalControlTimes ? Object.entries(rep.corePositionalMetrics.positionalControlTimes).map(([k,v]: any)=> `${k}: ${v ?? 0}%`).join(', ') : '—'}</div>
                                       <div>Escapes: {rep.corePositionalMetrics.escapes?.attempts || 0} attempts, {rep.corePositionalMetrics.escapes?.successPercent || 0}% success</div>
                                       <div>Reversals: {rep.corePositionalMetrics.reversals?.count || 0} total, {rep.corePositionalMetrics.reversals?.successPercent || 0}% success</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.guardMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Guard:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Retention %: {rep.guardMetrics.guardRetentionPercent ?? '—'}</div>
+                                      <div>Sweeps: {rep.guardMetrics.sweepAttempts ?? 0} attempts, {rep.guardMetrics.sweepSuccessPercent ?? 0}% success</div>
+                                      <div>Passing Attempts: {rep.guardMetrics.passingAttempts ?? 0}</div>
+                                      <div>Pass Prevention %: {rep.guardMetrics.guardPassPreventionPercent ?? '—'}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.transitionMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Transitions:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Efficiency %: {rep.transitionMetrics.transitionEfficiencyPercent ?? '—'}</div>
+                                      <div>Completion Rate: {'—'}</div>
+                                      <div>Errors: ft={rep.transitionMetrics.errorCounts?.failedTransition ?? 0}, lg={rep.transitionMetrics.errorCounts?.lostGuard ?? 0}, pm={rep.transitionMetrics.errorCounts?.positionalMistake ?? 0}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.submissionMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Submissions:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Attempts: {rep.submissionMetrics.submissionAttempts ?? 0}, Success %: {rep.submissionMetrics.submissionSuccessPercent ?? 0}</div>
+                                      <div>Chains: {rep.submissionMetrics.submissionChains ?? '—'}</div>
+                                      <div>Defenses: {rep.submissionMetrics.submissionDefenses ?? '—'}</div>
+                                      <div>Escapes: {'—'}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.scrambleMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Scramble:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Frequency: {rep.scrambleMetrics.scrambleFrequency ?? '—'}</div>
+                                      <div>Win %: {rep.scrambleMetrics.scrambleWinPercent ?? '—'}</div>
+                                      <div>Outcome Impact: {rep.scrambleMetrics.scrambleOutcomeImpact ?? '—'}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.effortEnduranceMetrics ? (
+                                  <div>
+                                    <strong className="text-accent">Effort & Endurance:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Average Intensity: {rep.effortEnduranceMetrics.rollingIntensityScore ?? '—'}</div>
+                                      <div>Fatigue Curve: {Array.isArray(rep.effortEnduranceMetrics.fatigueCurve) ? rep.effortEnduranceMetrics.fatigueCurve.join(', ') : '—'}</div>
+                                      <div>Endurance Indicator: {rep.effortEnduranceMetrics.enduranceIndicator ?? '—'}</div>
+                                      <div>Recovery Between Rounds (s): {rep.effortEnduranceMetrics.recoveryTimeBetweenRounds ?? '—'}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.consistencyTrends ? (
+                                  <div>
+                                    <strong className="text-accent">Consistency:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Consistency Rating: {rep.consistencyTrends.sessionConsistencyRating ?? '—'}</div>
+                                      <div>Technical Variety Index: {rep.consistencyTrends.technicalVarietyIndex ?? '—'}</div>
+                                      <div>Positional Error Trends: {Array.isArray(rep.consistencyTrends.positionalErrorTrends) && rep.consistencyTrends.positionalErrorTrends.length ? rep.consistencyTrends.positionalErrorTrends.join(', ') : '—'}</div>
+                                    </div>
+                                  </div>
+                                ) : null; })()}
+
+                                {(() => { const rep = (detail?.summary || session.summary || detail?.report); return rep?.summary ? (
+                                  <div>
+                                    <strong className="text-accent">Performance Trends:</strong>
+                                    <div className="text-neutral-500 text-xs mt-1">
+                                      <div>Historical Score Trend: {Array.isArray(rep.summary.historicalPerformanceTrend) && rep.summary.historicalPerformanceTrend.length ? rep.summary.historicalPerformanceTrend.join(', ') : '—'}</div>
+                                      <div>Win/Loss Ratio by Position: {rep.summary.winLossRatioByPosition ? Object.entries(rep.summary.winLossRatioByPosition).map(([k,v]: any)=> `${k}: ${v}`).join(', ') : '—'}</div>
                                     </div>
                                   </div>
                                 ) : null; })()}
@@ -234,7 +314,7 @@ export const SessionHistory = () => {
                               <details className="mt-4">
                                 <summary className="text-accent cursor-pointer hover:text-cyan-300">Full Report JSON</summary>
                                 <pre className="text-[10px] text-neutral-500 mt-2 whitespace-pre-wrap overflow-auto max-h-64">
-                                  {JSON.stringify(detail?.summary || session.summary, null, 2)}
+                                  {JSON.stringify(detail?.report || detail?.summary || session.summary, null, 2)}
                                 </pre>
                               </details>
                             </div>

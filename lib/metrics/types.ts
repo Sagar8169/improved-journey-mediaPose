@@ -7,6 +7,56 @@ export interface SegmentSummary {
 }
 export interface SessionQualityFlags { lowQuality?: boolean; short?: boolean; }
 
+// ---- V2 Metrics Schema Core Enums & Raw Events ----
+export type PositionType =
+  | 'mount'
+  | 'back_control'
+  | 'side_control'
+  | 'north_south'
+  | 'half_guard'
+  | 'guard_closed'
+  | 'guard_open'
+  | 'turtle'
+  | 'standing'
+  | 'unknown';
+
+export type TechniqueType =
+  | 'takedown'
+  | 'sweep'
+  | 'pass'
+  | 'submission'
+  | 'escape'
+  | 'reversal'
+  | 'transition'
+  | 'scramble';
+
+export type Outcome = 'success' | 'fail';
+export type ScrambleWinner = 'self' | 'opponent' | 'unknown';
+
+export type RawEvent =
+  | { ts: number; kind: 'position_start'; position: PositionType }
+  | { ts: number; kind: 'position_end'; position: PositionType }
+  | { ts: number; kind: 'transition'; from: PositionType; to: PositionType; outcome?: Outcome }
+  | { ts: number; kind: 'submission_attempt'; technique?: string }
+  | { ts: number; kind: 'submission_result'; outcome: Outcome }
+  | { ts: number; kind: 'escape_attempt' }
+  | { ts: number; kind: 'escape_result'; outcome: Outcome }
+  | { ts: number; kind: 'sweep_attempt' }
+  | { ts: number; kind: 'sweep_result'; outcome: Outcome }
+  | { ts: number; kind: 'pass_attempt' }
+  | { ts: number; kind: 'pass_result'; outcome: Outcome }
+  | { ts: number; kind: 'scramble_start' }
+  | { ts: number; kind: 'scramble_end'; winner: ScrambleWinner }
+  | { ts: number; kind: 'intensity_sample'; value: number } // 0..1
+  | { ts: number; kind: 'reaction_signal'; id: string }
+  | { ts: number; kind: 'reaction_move'; id: string };
+
+export interface RawMetrics {
+  events: RawEvent[];
+  startAt: number;
+  endAt?: number;
+}
+
 // ---- Grappling KPI Types (Rollmetrics) ----
 export interface PositionSpan { name: string; confidence: number; tStart: number; tEnd?: number; }
 export interface AttemptStats { attempts: number; successes: number; }
@@ -36,6 +86,24 @@ export interface GrapplingKPIs {
   intensityScore?: number; // 0-100, rolling intensity
   reactionTimeMs?: number; // time to first meaningful movement
   recoveryTimeMs?: number; // between rounds (post-session)
+}
+
+// Live KPIs v2: derived continuously from RawEvents
+export interface LiveKPIs {
+  // position control times percentage by position name
+  controlTimePctByPosition: Record<string, number>;
+  submission: AttemptStats;
+  escape: AttemptStats;
+  transition: AttemptStats;
+  takedown: AttemptStats;
+  pass: AttemptStats;
+  sweep: AttemptStats;
+  scramble: { attempts: number; wins: number; losses: number };
+  guardRetentionPct: number;
+  transitionEfficiencyPct: number;
+  scrambleWinPct: number;
+  avgIntensity: number; // 0..100
+  reactionAvgMs?: number;
 }
 export interface SessionRecord {
   schemaVersion: number;
@@ -97,6 +165,8 @@ export interface FrameUpdatePayload {
   repIncrement?: boolean;
 }
 export const SESSION_SCHEMA_VERSION = 1;
+// New aggregated metrics schema version (DB-storable aggregated report only, no raw persistence)
+export const METRICS_SCHEMA_VERSION = 2;
 export const SEGMENT_MS = 30_000;
 export const MIN_VALID_SESSION_SEC = 10;
 export const MIN_DETECTION_RATE = 0.4;

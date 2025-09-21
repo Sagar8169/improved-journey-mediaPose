@@ -56,7 +56,7 @@ async function sessionsListHandler(
       endAt: session.endAt?.toISOString(),
       durationMs: session.durationMs,
       qualityFlag: session.qualityFlag,
-      summary: session.summary,
+  summary: session.summary ?? session.report, // prefer server stored summary; fallback to report
       // convenience fields for UI parity with legacy store, if present in rawReport
       reps: (session.rawReport?.totalReps) ?? undefined,
       detectionRate: (session.rawReport?.detectionRate) ?? undefined,

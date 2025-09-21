@@ -4,6 +4,7 @@ import { getCollections } from '@/lib/server/db';
 import { FinishSessionSchema, FinishSessionRequest, ApiResponse, validateBody } from '@/lib/server/validation';
 import { withAuthVerifiedAndCors } from '@/lib/server/middleware';
 import { buildSessionReport } from '@/lib/metrics/report';
+import type { SessionReport } from '@/lib/metrics/types';
 
 // Configure body size limit for this endpoint
 export const config = {
@@ -16,7 +17,7 @@ export const config = {
 
 async function finishSessionHandler(
   req: any, // AuthenticatedRequest
-  res: NextApiResponse<ApiResponse<{ message: string } | { id: string; startAt: string; endAt?: string; durationMs?: number; qualityFlag?: string; summary?: Record<string, any>; rawReport?: Record<string, any> }>>
+  res: NextApiResponse<ApiResponse<{ message: string } | { id: string; startAt: string; endAt?: string; durationMs?: number; qualityFlag?: string; summary?: Record<string, any>; rawReport?: Record<string, any>; report?: Record<string, any> }>>
 ) {
   // Support GET for session details and POST for finishing session
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -77,7 +78,8 @@ async function finishSessionHandler(
           durationMs: session.durationMs,
           qualityFlag: session.qualityFlag,
           summary: session.summary,
-          rawReport: session.rawReport,
+          rawReport: session.rawReport, // legacy
+          report: session.report, // v2
         }
       });
     } catch (error) {
@@ -134,25 +136,31 @@ async function finishSessionHandler(
     }
 
     // Build session report/summary using existing metrics library
-    let summary: Record<string, any> = {};
+  let summary: Record<string, any> = {};
+  let reportPayload: SessionReport | undefined = undefined;
     let qualityFlag: 'good' | 'low' | 'discard' = 'good';
     
     try {
-      // Create a mock SessionRecord for buildSessionReport
-      const mockSessionRecord = {
-        ...finalizedReport,
-        startTs: session.startAt.getTime(),
-        endTs: endTime.getTime(),
-        durationSec: durationMs / 1000,
-      };
-      
-      const sessionReport = buildSessionReport(mockSessionRecord as any, []);
-      summary = sessionReport;
+      // v2 path: if client sends aggregated report and summary
+      if (finalizedReport && 'schemaVersion' in finalizedReport && 'report' in finalizedReport && 'summary' in finalizedReport) {
+        reportPayload = (finalizedReport as any).report;
+        summary = (finalizedReport as any).summary;
+      } else {
+        // v1 fallback: Create a mock SessionRecord for buildSessionReport from legacy rec
+        const mockSessionRecord = {
+          ...finalizedReport,
+          startTs: session.startAt.getTime(),
+          endTs: endTime.getTime(),
+          durationSec: durationMs / 1000,
+        };
+        const sessionReport = buildSessionReport(mockSessionRecord as any, []);
+        summary = sessionReport;
+      }
       
       // Determine quality flag based on duration and detection rate
       if (durationMs < 10000) { // Less than 10 seconds
         qualityFlag = 'discard';
-      } else if (durationMs < 30000 || (finalizedReport.detectionRate && finalizedReport.detectionRate < 0.4)) {
+      } else if (durationMs < 30000 || ((finalizedReport as any)?.detectionRate && (finalizedReport as any).detectionRate < 0.4)) {
         qualityFlag = 'low';
       }
       
@@ -174,7 +182,8 @@ async function finishSessionHandler(
           endAt: endTime,
           durationMs,
           summary,
-          rawReport: finalizedReport,
+          report: reportPayload, // v2 aggregated report
+          rawReport: finalizedReport && (!('report' in finalizedReport)) ? finalizedReport : undefined, // keep legacy field only for v1 payloads
           qualityFlag,
           updatedAt: new Date(),
         }

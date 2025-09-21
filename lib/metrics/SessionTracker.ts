@@ -1,9 +1,15 @@
-import { SESSION_SCHEMA_VERSION, SEGMENT_MS, MIN_VALID_SESSION_SEC, MIN_DETECTION_RATE, SessionRecord, FrameUpdatePayload, SymmetryStats, JointAngleStats, GrapplingKPIs } from './types';
+import { SESSION_SCHEMA_VERSION, SEGMENT_MS, MIN_VALID_SESSION_SEC, MIN_DETECTION_RATE, SessionRecord, FrameUpdatePayload, SymmetryStats, JointAngleStats, GrapplingKPIs, RawMetrics, RawEvent, LiveKPIs } from './types';
 import { updateRunning } from './stats';
 import { buildSessionReport } from './report';
+import { buildReportFromEvents } from './reportFromEvents';
+import { estimateIntensity, placeholderPositionDetector, detectTransitions, detectSubmissions, detectEscapes } from './detectors';
+import { computeControlTimePctByPosition, computeAttempts, computeScramble, computeAvgIntensity, computeReactionAvg, countTransitions } from './kpi';
 
 export class SessionTracker {
   rec: SessionRecord;
+  private raw: RawMetrics;
+  private currentPosition: { position: string; t0: number } | null = null;
+  private lastSignalId?: string;
   constructor(userId: string, modelComplexity: 0|1|2, mirror: boolean) {
     this.rec = {
       schemaVersion: SESSION_SCHEMA_VERSION,
@@ -56,6 +62,7 @@ export class SessionTracker {
       lastBboxAreaPct: undefined,
       intensityEma: 0,
     };
+    this.raw = { events: [], startAt: this.rec.startTs };
   }
   private startSegment(now: number) {
     this.rec.segActive = { tStart: now, tEnd: now, reps: 0, postureIssues: 0 };
@@ -74,7 +81,7 @@ export class SessionTracker {
     this.rollSegment(now);
     this.rec.frameCount++;
     if (p.fps != null) { this.rec.fpsSum += p.fps; this.rec.fpsSumSq += p.fps * p.fps; }
-    if (!p.hasPose) return;
+  if (!p.hasPose) return;
     this.rec.detectionFrames++;
 
     // Reaction speed: time to first detected pose-based movement
@@ -130,6 +137,16 @@ export class SessionTracker {
       this.rec.maxRepStreak = Math.max(this.rec.maxRepStreak, this.rec.currentStreak);
       if (this.rec.segActive) this.rec.segActive.reps++;
     }
+
+    // V2 detectors: generate raw events (in-memory only)
+    const frame = { ts: now, bboxAreaPct: p.bboxAreaPct, hasPose: p.hasPose };
+    const events: RawEvent[] = [];
+    const intensityEv = estimateIntensity(frame); if (intensityEv) events.push(intensityEv);
+    events.push(...placeholderPositionDetector(frame));
+    events.push(...detectTransitions(frame));
+    events.push(...detectSubmissions(frame));
+    events.push(...detectEscapes(frame));
+    if (events.length) this.raw.events.push(...events);
   }
   private updateSym(key: 'shoulderSym'|'kneeSym', value: number) {
     const s = this.rec[key] as SymmetryStats;
@@ -164,10 +181,18 @@ export class SessionTracker {
     this.rec.finalized = true;
     // Build the new Session Report JSON
     try {
-      this.rec.report = buildSessionReport(this.rec, []);
+      // Prefer event-derived report if any events captured
+      if (this.raw.events.length) {
+        this.rec.report = buildReportFromEvents(this.raw.events, this.raw.startAt, end);
+      } else {
+        this.rec.report = buildSessionReport(this.rec, []);
+      }
     } catch (e:any) {
       this.rec.errors.push('report_build:' + (e?.message || String(e)));
     }
+    // Memory safety: clear raw events after finalize
+    this.raw.endAt = end;
+    this.raw.events = [];
     return this.rec;
   }
 

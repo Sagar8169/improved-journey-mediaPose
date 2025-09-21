@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SessionTracker } from '@/lib/metrics/SessionTracker';
-import { FrameUpdatePayload, SessionRecord, GrapplingKPIs } from '@/lib/metrics/types';
+import { FrameUpdatePayload, SessionRecord, GrapplingKPIs, LiveKPIs } from '@/lib/metrics/types';
 
 export interface SessionMetrics {
   totalReps: number;

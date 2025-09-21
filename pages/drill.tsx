@@ -6,6 +6,7 @@ import { useAuth } from '@/components/useAuth';
 import { useRouter } from 'next/router';
 import { createPortal } from 'react-dom';
 import { sessions } from '@/lib/apiClient';
+import { METRICS_SCHEMA_VERSION } from '@/lib/metrics/types';
 
 // Lazy-load mediapipe libs (browser only)
 const loadPoseStack = () => Promise.all([
@@ -242,8 +243,15 @@ export default function DrillPage() {
       // Save to database if we have a session ID
       if (currentSessionId && detailed) {
         try {
+          // Prefer v2 aggregated report payload; do not send raw details
+          const aggregated = {
+            schemaVersion: METRICS_SCHEMA_VERSION,
+            report: detailed.report ?? null,
+            // For now, reuse report as summary to minimize server computation
+            summary: detailed.report ?? null,
+          } as Record<string, any>;
           await sessions.finish(currentSessionId, {
-            finalizedReport: detailed,
+            finalizedReport: aggregated,
             endAt: new Date().toISOString(),
           });
           console.log('Session saved to database:', currentSessionId);
