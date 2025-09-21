@@ -536,6 +536,19 @@ export default function DrillPage() {
   const currentPosition = detected ? 'ACTIVE' : 'IDLE';
   const feedback = posture.includes('leaning') ? 'Posture adjustment needed' : (detected ? 'Good alignment' : 'No pose detected');
 
+  // Derive a simple pose name for the mobile top status section
+  const poseName = useMemo(() => {
+    if (!detected) return 'No Pose Detected';
+    switch (repMode) {
+      case 'curlL': return 'Bicep Curl (Left)';
+      case 'curlR': return 'Bicep Curl (Right)';
+      case 'squat': return 'Squat';
+      case 'pushup': return 'Push-up';
+      case 'jack': return 'Jumping Jacks';
+      default: return 'Idle';
+    }
+  }, [detected, repMode]);
+
   // Voice Cues: every 30 seconds
   useEffect(()=>{
     if (!voiceEnabled || !running) return;
@@ -570,9 +583,33 @@ export default function DrillPage() {
   return (
     <RequireAuth>
     <Layout>
-      <main className="container-mobile flex flex-col items-center bg-bg text-brandText min-h-[calc(100svh-120px)] py-6">
+      <main className="container-mobile flex flex-col items-center bg-bg text-brandText min-h-[100svh] py-4 sm:py-6">
         <div className="w-full max-w-4xl flex flex-col items-center">
-          <div className="relative w-full aspect-video bg-panel rounded-xl overflow-hidden border border-accent/30">
+          {/* Top Status Bar: pose name on left, camera toggle icon on right */}
+          <div className="w-full flex items-center justify-between px-2 sm:px-0 mb-3 sm:mb-4">
+            <div className="flex flex-col">
+              <span className="text-sm text-brandText/60">Status</span>
+              <span className={`text-lg font-semibold ${!detected ? 'text-brandText/50' : posture.includes('leaning') ? 'text-yellow-400' : 'text-accent'}`}>{poseName}</span>
+            </div>
+            <button
+              onClick={toggleCameraFacing}
+              disabled={cameraSwitchBlocked}
+              aria-label="Toggle front/back camera"
+              className="p-2 rounded-xl bg-panel border border-accent/40 text-brandText/80 hover:bg-panel/70 disabled:opacity-40"
+              title="Switch Camera"
+            >
+              {/* Camera-switch icon (inline SVG) */}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 7h7l2-2h1a2 2 0 012 2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M17 17H10l-2 2H7a2 2 0 01-2-2V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M7 11l-2 2-2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M21 13l-2-2-2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Center: Live camera feed with overlay, mobile-first aspect */}
+          <div className="relative w-full aspect-[9/16] md:aspect-video bg-panel rounded-xl overflow-hidden border border-accent/30">
             <video ref={videoRef} playsInline className="w-full h-full object-cover hidden" />
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
             {suggestion && (
@@ -602,22 +639,15 @@ export default function DrillPage() {
             )}
           </div>
 
-          <div className="mt-6 text-center">
-            <p className="text-brandText/60 text-base md:text-lg">You're in</p>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-wide text-accent">{currentPosition}</h2>
-            <p className={`font-medium mt-2 text-sm md:text-base ${feedback.includes('adjust') ? 'text-yellow-400' : feedback.includes('Good') ? 'text-accent' : 'text-brandText/50'}`}>{feedback}</p>
-          </div>
-
-          <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
+          {/* Bottom Controls */}
+          <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
             <button onClick={()=> running ? stop() : start()} className="btn-accent w-full sm:w-auto px-6 py-3 rounded-2xl text-base min-w-[140px]">{running? 'Pause':'Resume'}</button>
             <button onClick={()=> stop(true)} disabled={!sessionActiveRef.current} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-base min-w-[140px]">End Session</button>
-            <button onClick={toggleCameraFacing} disabled={cameraSwitchBlocked} className="sm:hidden w-full px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 disabled:opacity-40 text-base min-w-[140px]" aria-label="Toggle front/back camera">
-              {cameraFacing === 'user' ? 'Back Camera' : 'Front Camera'}
-            </button>
             <button onClick={()=> setControlsOpen(true)} className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-panel border border-accent/40 hover:bg-panel/70 text-base min-w-[140px]">Controls</button>
           </div>
 
-          <div className="mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {/* KPIs and Debug */}
+          <div className="mt-8 sm:mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-3">
               <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">key performance indicator</h3>
               {(() => {
