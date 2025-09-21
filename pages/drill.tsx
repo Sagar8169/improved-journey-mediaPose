@@ -323,9 +323,9 @@ export default function DrillPage() {
   const onResults = (results: PoseResults) => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (!canvas || !video) return; // component not ready or unmounted
+    if (!canvas || !video) return;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return; // context unavailable (rare)
+    if (!ctx) return;
 
     // Compute displayed video rectangle within the stage (object-cover)
     const stage = stageRef.current;
@@ -333,38 +333,41 @@ export default function DrillPage() {
     const ch = stage?.clientHeight ?? 0;
     const vw = video.videoWidth || 1;
     const vh = video.videoHeight || 1;
-    // Use cover to fill the stage without distortion (cropping allowed)
-    const s = Math.max(cw / vw, ch / vh) || 1;
+
+    // If stage size is not ready yet, skip drawing this frame to avoid misplacement
+    if (cw === 0 || ch === 0) return;
+
+    // Cover scaling (fills the stage; crops as needed)
+    const s = Math.max(cw / vw, ch / vh);
     const dw = Math.round(vw * s);
     const dh = Math.round(vh * s);
     const ox = Math.round((cw - dw) / 2);
     const oy = Math.round((ch - dh) / 2);
 
-    // Size canvas to the scaled video box; it will overflow and be clipped by the stage
+    // Size and position canvas to match the displayed video box
     if (canvas.width !== dw) canvas.width = dw;
     if (canvas.height !== dh) canvas.height = dh;
     const cStyle = canvas.style as CSSStyleDeclaration;
+    cStyle.position = 'absolute';
     cStyle.left = `${ox}px`;
     cStyle.top = `${oy}px`;
     cStyle.width = `${dw}px`;
     cStyle.height = `${dh}px`;
+    cStyle.zIndex = '10'; // ensure above <video>
 
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (mirrorRef.current) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-    // We no longer draw the video frame onto the canvas; the <video> is visible behind with object-contain.
 
     const lms = results.poseLandmarks as any[] | undefined;
     const hasPose = !!lms;
     setDetected(hasPose);
     if (!lms) { ctx.restore(); return; }
 
-    // Draw skeleton overlay
     if (overlayEnabledRef.current && drawUtilsRef.current) {
       const { drawConnectors, drawLandmarks, POSE_CONNECTIONS } = drawUtilsRef.current;
-  // Use brand accent + light landmarks for consistency with dark theme
-  drawConnectors(ctx, lms, POSE_CONNECTIONS, { color: '#58A6FF', lineWidth: 3 });
-  drawLandmarks(ctx, lms, { color: '#F0F6FC', lineWidth: 1, radius: 2 });
+      drawConnectors(ctx, lms, POSE_CONNECTIONS, { color: '#58A6FF', lineWidth: 3 });
+      drawLandmarks(ctx, lms, { color: '#F0F6FC', lineWidth: 1, radius: 2 });
     }
 
     const idx: Record<string, number> = { nose:0, leftShoulder:11,rightShoulder:12,leftElbow:13,rightElbow:14,leftWrist:15,rightWrist:16,leftHip:23,rightHip:24,leftKnee:25,rightKnee:26,leftAnkle:27,rightAnkle:28 };
@@ -638,7 +641,7 @@ export default function DrillPage() {
               className="absolute inset-0 w-full h-full object-cover"
               style={{ transform: mirror ? 'scaleX(-1)' : 'none', transformOrigin: 'center' }}
             />
-            <canvas ref={canvasRef} className="absolute" />
+            <canvas ref={canvasRef} className="absolute pointer-events-none z-10" />
             {suggestion && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                 <div className="bg-black/60 px-8 py-6 rounded-2xl border border-accent/40 shadow-2xl max-w-[80%]">
