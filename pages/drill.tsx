@@ -321,25 +321,26 @@ export default function DrillPage() {
   };
 
   const onResults = (results: PoseResults) => {
-  const canvas = canvasRef.current;
-  const video = videoRef.current;
-  if (!canvas || !video) return; // component not ready or unmounted
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return; // context unavailable (rare)
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return; // component not ready or unmounted
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return; // context unavailable (rare)
 
-    // Compute displayed video rectangle within the stage (object-contain)
+    // Compute displayed video rectangle within the stage (object-cover)
     const stage = stageRef.current;
     const cw = stage?.clientWidth ?? 0;
     const ch = stage?.clientHeight ?? 0;
     const vw = video.videoWidth || 1;
     const vh = video.videoHeight || 1;
-    const s = Math.min(cw / vw, ch / vh) || 1;
+    // Use cover to fill the stage without distortion (cropping allowed)
+    const s = Math.max(cw / vw, ch / vh) || 1;
     const dw = Math.round(vw * s);
     const dh = Math.round(vh * s);
     const ox = Math.round((cw - dw) / 2);
     const oy = Math.round((ch - dh) / 2);
 
-    // Size canvas to the displayed video box for perfect alignment
+    // Size canvas to the scaled video box; it will overflow and be clipped by the stage
     if (canvas.width !== dw) canvas.width = dw;
     if (canvas.height !== dh) canvas.height = dh;
     const cStyle = canvas.style as CSSStyleDeclaration;
@@ -349,8 +350,8 @@ export default function DrillPage() {
     cStyle.height = `${dh}px`;
 
     ctx.save();
-    ctx.clearRect(0,0,canvas.width, canvas.height);
-  if (mirrorRef.current) { ctx.translate(canvas.width,0); ctx.scale(-1,1); }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (mirrorRef.current) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
     // We no longer draw the video frame onto the canvas; the <video> is visible behind with object-contain.
 
     const lms = results.poseLandmarks as any[] | undefined;
@@ -634,7 +635,7 @@ export default function DrillPage() {
             <video
               ref={videoRef}
               playsInline
-              className="absolute inset-0 w-full h-full object-contain"
+              className="absolute inset-0 w-full h-full object-cover"
               style={{ transform: mirror ? 'scaleX(-1)' : 'none', transformOrigin: 'center' }}
             />
             <canvas ref={canvasRef} className="absolute" />
