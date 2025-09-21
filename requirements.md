@@ -152,14 +152,14 @@
 ### Session metrics
 
 * `POST /api/sessions/start`
-  body: `{ drillType, deviceInfo, metadata }`
+  body: `{ drillType, deviceInfo, metadata, startAt? }`
   returns session stub `{ sessionId }`
-* `POST /api/sessions/:id/finish`
-  body: `{ finalizedReport (SessionTracker JSON), endAt }`
-  server validates and persists.
+* `POST /api/sessions/:id` (finish)
+  body v2: `{ schemaVersion: 2, report: SessionReport, summary: MinimalSummary, endAt }`
+  notes: server stores `report` (canonical) and `summary`; legacy v1 `rawReport` accepted for backward compatibility only.
 * `GET /api/sessions`
-  query: `?page=1&limit=20&hideLowQuality=true` (authenticated) — returns paginated sessions for current user.
-* `GET /api/sessions/:id` — returns full session report (only owner or admin).
+  query: `?page=1&limit=20&hideLowQuality=true` (authenticated) — returns paginated sessions for current user (prefers `summary`/`report`).
+* `GET /api/sessions/:id` — returns full session detail including `report` and legacy `rawReport?` for compatibility.
 * `GET /api/health` — server + DB health.
 
 ---

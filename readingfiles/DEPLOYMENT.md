@@ -22,7 +22,7 @@ The production-ready authentication and session management system has been succe
 - `POST /api/auth/verify-email` - Email verification
 - `POST /api/auth/resend-verification` - Resend verification email
 - `POST /api/sessions/start` - Start tracking session
-- `PUT /api/sessions/[id]` - Complete session with metrics
+- `POST /api/sessions/[id]` - Complete session with aggregated metrics (v2)
 - `GET /api/sessions` - List user sessions with pagination
 - `GET /api/sessions/[id]` - Get session details
 - `GET /api/health` - System health check
@@ -111,6 +111,19 @@ curl -X POST https://your-site.netlify.app/api/auth/signup \
 curl -X POST https://your-site.netlify.app/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123"}'
+
+# Test finish session (v2 aggregated payload)
+curl -X POST https://your-site.netlify.app/api/sessions/<SESSION_ID> \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer <ACCESS_TOKEN>" \
+   -d '{
+      "finalizedReport": {
+         "schemaVersion": 2,
+         "report": { "summary": { "overallSessionScorecard": 0 } },
+         "summary": { "overallSessionScorecard": 0 }
+      },
+      "endAt": "2025-09-21T12:00:00Z"
+   }'
 ```
 
 ## 🚨 Troubleshooting Guide

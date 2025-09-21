@@ -28,7 +28,7 @@ Goals:
 
 ## Architecture
 
-High-level: Next.js app deployed to Netlify. Pages render frontend; API routes execute as Netlify Functions. MongoDB Atlas stores users and session records. Resend sends verification emails. JWT access token is short-lived; refresh token is long-lived in httpOnly Secure cookie. Session metrics produced by the existing client-side SessionTracker are validated and persisted server-side.
+High-level: Next.js app deployed to Netlify. Pages render frontend; API routes execute as Netlify Functions. MongoDB Atlas stores users and session records. Resend sends verification emails. JWT access token is short-lived; refresh token is long-lived in httpOnly Secure cookie. Session metrics are produced client-side, aggregated into a SessionReport, validated, and persisted server-side (raw events are not uploaded or stored).
 
 ```mermaid
 flowchart TD
@@ -60,7 +60,7 @@ Key flows:
 - Verify: user clicks link -> /api/auth/verify-email?token=... -> marks emailVerified=true.
 - Login: client -> /api/auth/login -> access token returned, refresh cookie set.
 - Refresh: client -> /api/auth/refresh -> new access token if valid refresh cookie.
-- Sessions: client -> /api/sessions/start -> id -> /api/sessions/:id/finish with finalized report -> persisted.
+- Sessions: client -> /api/sessions/start -> id -> /api/sessions/:id/finish with aggregated payload { schemaVersion: 2, report, summary } -> persisted (report + summary). Raw metrics are never uploaded or stored. Legacy v1 payloads are accepted for backward compatibility.
 
 Serverless MongoDB pooling:
 - Use a globally cached MongoClient to avoid opening a new connection per invocation (critical for Netlify cold starts and Atlas free-tier limits). Pattern:
@@ -151,7 +151,8 @@ Interfaces (selected):
 - Session Payloads
   - StartSessionRequest: { drillType?: string; deviceInfo?: any; metadata?: Record<string, any>; startAt?: string }
   - StartSessionResponse: { sessionId: string }
-  - FinishSessionRequest: { finalizedReport: Record<string, any>; endAt: string }
+  - FinishSessionRequest (v2): { schemaVersion: 2; report: SessionReport; summary: MinimalSummary; endAt: string }
+    - Notes: Raw event streams are not accepted in v2; only aggregated SessionReport is sent. Legacy clients may still POST a v1 raw payload which is stored under rawReport (optional) for backward compatibility.
   - SessionListQuery: { page?: number; limit?: number; hideLowQuality?: boolean }
   - Limits: `/api/sessions/[id]/finish` enforces strict body size (default 2MB). Requests exceeding limit return 413 Payload Too Large.
 
@@ -178,8 +179,9 @@ MongoDB Collections and schemas.
   - startAt: Date
   - endAt: Date
   - durationMs: number
+  - report: object (canonical aggregated SessionReport)
   - summary: { /* selected KPIs derived from report */ }
-  - rawReport: object (SessionTracker JSON)
+  - rawReport?: object (legacy v1 SessionTracker JSON; optional for backward compatibility)
   - qualityFlag: 'good' | 'low' | 'discard'
   - deviceInfo?: any
   - mediaType?: string
@@ -225,7 +227,9 @@ classDiagram
     Date startAt
     Date endAt
     number durationMs
+    object report
     object summary
+    %% rawReport is optional legacy (v1 compatibility only)
     object rawReport
     string qualityFlag
     any deviceInfo
@@ -260,7 +264,7 @@ Standard error response: { success:false, error:{ code, message } }
 
 Validation errors (400):
 - Invalid email/password format, weak password
-- Invalid session payload (missing finalizedReport, malformed endAt)
+- Invalid session payload (missing report/schemaVersion, malformed endAt)
 
 Auth errors (401/403):
 - 401: Invalid/missing access token; expired access token
@@ -285,7 +289,7 @@ Edge cases:
 - Token replay: refresh token rotated and old token revoked; use token jti hashing
 - Stolen refresh cookie: on detection, revoke all refresh tokens for user and require re-login
 - Partial session uploads: if finish fails, allow retry idempotently (upsert on sessionId)
-- Large rawReport: enforce payload size limit; compress if needed (serverless limits)
+- Large finish payload: enforce payload size limit; consider compression if the aggregated report grows in future
   - If compression is used client-side, indicate `Content-Encoding: gzip` and handle decompression server-side before validation.
 
 Logging:
@@ -309,7 +313,7 @@ Retries:
 - Integration tests (API)
   - Signup -> Verify -> Login -> Refresh -> Logout flow
     - Include refresh rotation: ensure old refresh token cannot be reused; detect and revoke all on reuse attempt.
-  - Sessions: start -> finish -> list (pagination, hideLowQuality) -> get detail (ownership enforced)
+  - Sessions: start -> finish (v2 aggregated payload) -> list (pagination, hideLowQuality) -> get detail (ownership enforced)
     - Verify 413 on oversize payload to finish endpoint.
   - Health endpoint with DB status
 
@@ -429,8 +433,8 @@ Example .env (do not commit real secrets):
 ## Open Questions & Clarifications Needed
 
 - Exact production domain(s) to set cookie Domain and CORS allowlist (e.g., rollmetric.com, staging)
-- Netlify Next adapter version and function payload size limits to size rawReport cap
-- Whether to compress rawReport (gzip) at rest or rely on Mongo storage as-is
+- Netlify Next adapter version and function payload size limits to size finish payload cap
+- Whether to compress the aggregated report (gzip) at rest or rely on Mongo storage as-is
 - Password policy requirements (length/complexity) beyond defaults
 - Email template/design and sender identity (from address) for Resend
 - Should unverified users be able to login at all, or only after verification? (Current design: allow login but block session endpoints)

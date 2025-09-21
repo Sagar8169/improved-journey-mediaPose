@@ -1,3 +1,32 @@
+## Update (Sept 2025): Metrics v2 — Aggregated-only storage
+
+This project now implements a v2, event-driven metrics pipeline that stores only the aggregated SessionReport in the database and keeps raw events in memory during a session:
+
+- Client finalize payload: the browser posts finalizedReport as an aggregated object
+  - Shape: { schemaVersion: 2, report: SessionReport, summary: SessionReport | MinimalSummary }
+  - No raw events are sent to the server; SessionTracker clears raw events in-memory after finalize.
+- Server persistence:
+  - `sessions.report?: SessionReport` is the v2 canonical record for a session.
+  - `sessions.rawReport?: Record<string, any>` is now legacy and only populated when older clients upload v1 payloads.
+  - Listing and detail APIs prefer `summary` (if present) and fall back to `report` for display; UI stays backward-compatible.
+- API endpoint updates:
+  - `POST /api/sessions/[sessionId]` accepts v2 payloads (schemaVersion + report + summary) and stores `report` + `summary`.
+  - `GET /api/sessions/[sessionId]` returns `report` alongside legacy `rawReport` for compatibility.
+  - `GET /api/sessions` returns `summary` (or `report` fallback) in each item.
+  - `GET /api/session-metrics` advertises `METRICS_SCHEMA_VERSION = 2` and returns an example SessionReport shape.
+- Code modules introduced for v2:
+  - `lib/metrics/constants.ts` — METRICS_SCHEMA_VERSION and score weights
+  - `lib/metrics/detectors.ts` — event detector stubs and intensity sampling
+  - `lib/metrics/kpi.ts` — KPI calculators derived from RawEvents
+  - `lib/metrics/reportFromEvents.ts` — builds SessionReport from RawEvents
+  - `lib/metrics/SessionTracker.ts` — now accumulates RawEvents in-memory and generates the report at finalize, then clears events
+- UI updates:
+  - `components/sessions/SessionHistory.tsx` prefers `report` when rendering, with legacy fallbacks.
+  - `pages/drill.tsx` posts the aggregated v2 payload on finalize (uses METRICS_SCHEMA_VERSION).
+
+Notes:
+- Previous mentions that “rawReport is the computed JSON metrics persisted” are now legacy. The authoritative v2 persisted artifact is `report` (aggregated), while raw is never stored.
+
 ## Executive Summary
 
 MediaPose (aka Roll Metrics) is a Next.js 14 web application that performs in‑browser pose tracking using MediaPipe Pose and records training sessions with computed metrics. The app includes a minimal backend via Next.js API routes for authentication (JWT access + httpOnly refresh cookie), email verification (Resend), and MongoDB persistence of session summaries. Client logic captures webcam video, runs pose inference locally, derives KPIs, and optionally saves session reports to the database. Email‑unverified users can log in but cannot use session endpoints.
@@ -5,12 +34,12 @@ MediaPose (aka Roll Metrics) is a Next.js 14 web application that performs in‑
 What it does today
 - Client: Real‑time pose estimation in the browser with MediaPipe Pose; draws landmarks; computes angles, symmetry deltas, detection rate, posture issues, simple rep logic for a few movements; derives a SessionRecord with live KPIs; produces a summarized SessionReport JSON at finalize.
 - Auth: Signup/login with bcrypt password hashing and JWT access tokens; refresh token rotation via secure httpOnly cookie; email verification flow via tokenized link and Resend email service.
-- Storage: MongoDB collections for users, sessions, and audit logs (indexes ensured). Session payloads include rawReport and computed summary, with 90‑day TTL on sessions.
+- Storage: MongoDB collections for users, sessions, and audit logs (indexes ensured). Sessions persist an aggregated `report` (v2 canonical) and a `summary`; `rawReport` is legacy-only for older clients. 90‑day TTL on sessions.
 - API: Next.js API routes for auth, health, session list/start/finish, and admin init‑db. Middlewares provide CORS, error handling, auth verification, and rate limiting (in‑memory).
 - UI: Landing with modal auth, protected pages for home, drill (pose), account, profile, verify‑email screen; session history table queries server and shows details.
 
 Key constraints
-- All CV runs client‑side in browser; no raw video is uploaded or stored by the server. Session rawReport is the computed JSON metrics, not frames.
+- All CV runs client‑side in browser; no raw video is uploaded or stored by the server. Only aggregated metrics (`report` + `summary`) are persisted; raw event streams never leave the browser.
 - Netlify function payloads are limited; finish session endpoint enforces 2MB body limit and Content‑Length guard.
 - Rate limiting is in‑memory per serverless instance (non‑distributed); adequate for low traffic but not consistent across instances.
 - Email sending requires Resend API key and verified sender/domain.
@@ -180,13 +209,13 @@ Data flow (camera → analysis → feedback → storage)
 Where data is stored
 - Users, Sessions, AuditLogs: MongoDB [lib/server/db.ts]
 - Client persistence: localStorage for `accessToken` and a serialized `auth-user` [lib/apiClient.ts, components/useAuth.ts]
-- No raw video stored; only computed metrics JSON (`rawReport`, `summary`) persisted.
+- No raw video stored; only aggregated metrics JSON (`report` + `summary`) persisted; legacy `rawReport` may exist only for v1 uploads.
 
 Collections (TypeScript interfaces)
 - User
   - email, passwordHash, displayName, emailVerified, roles[], refreshTokens[{tokenHash, createdAt, expiresAt, deviceInfo}], createdAt, updatedAt
 - Session
-  - userId, startAt, endAt?, durationMs?, summary?: Record, rawReport: Record, qualityFlag?: 'good'|'low'|'discard', deviceInfo?, mediaType?, drillType?, createdAt, updatedAt
+  - userId, startAt, endAt?, durationMs?, report?: Record, summary?: Record, rawReport?: Record, qualityFlag?: 'good'|'low'|'discard', deviceInfo?, mediaType?, drillType?, createdAt, updatedAt
 - AuditLog
   - userId?, action, ip?, userAgent?, details?, createdAt
 
@@ -223,6 +252,7 @@ erDiagram
     date startAt
     date endAt
     number durationMs
+    json report
     json summary
     json rawReport
     string qualityFlag
@@ -345,7 +375,10 @@ components:
       type: object
       required: [endAt]
       properties:
-        finalizedReport: { type: object, additionalProperties: true }
+        finalizedReport:
+          description: Aggregated metrics wrapper (v2: { schemaVersion: 2, report, summary }) or legacy v1 raw payload
+          type: object
+          additionalProperties: true
         endAt: { type: string, format: date-time }
     SessionSummary:
       type: object

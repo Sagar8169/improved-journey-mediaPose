@@ -6,7 +6,7 @@
 - Build command: npm run build
 
 ## Payload Limits
-- Netlify Functions: 6MB maximum request body (synchronous functions)
+- Netlify Functions: ~6MB maximum request body (synchronous functions)
 - For session finish endpoint: Set limit to 2MB for safety margin
 - Use Next.js API route config: `{ api: { bodyParser: { sizeLimit: '2mb' } } }`
 - Add runtime Content-Length guard to return 413 before parsing
@@ -17,4 +17,4 @@
 - Monitor function execution time (10s timeout for synchronous functions)
 
 ## Configuration
-No changes needed to netlify.toml - plugin handles Next.js deployment automatically.
+No changes needed to netlify.toml — the Next.js plugin handles deployment automatically.

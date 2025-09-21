@@ -146,7 +146,74 @@ export class SessionTracker {
     events.push(...detectTransitions(frame));
     events.push(...detectSubmissions(frame));
     events.push(...detectEscapes(frame));
-    if (events.length) this.raw.events.push(...events);
+    if (events.length) {
+      // Append to raw event buffer (in-memory only)
+      this.raw.events.push(...events);
+      // Update live grappling KPIs incrementally for real-time UI
+      const g = this.rec.grappling;
+      if (g) {
+        for (const ev of events) {
+          switch (ev.kind) {
+            case 'position_start': {
+              // Close previous position window if switching
+              if (this.currentPosition && this.currentPosition.position !== ev.position) {
+                const dt = Math.max(0, ev.ts - this.currentPosition.t0);
+                const key = this.currentPosition.position as unknown as string;
+                g.controlTimeByPos[key] = (g.controlTimeByPos[key] || 0) + dt;
+              }
+              this.currentPosition = { position: ev.position, t0: ev.ts };
+              break;
+            }
+            case 'position_end': {
+              if (this.currentPosition && this.currentPosition.position === ev.position) {
+                const dt = Math.max(0, ev.ts - this.currentPosition.t0);
+                const key = ev.position as unknown as string;
+                g.controlTimeByPos[key] = (g.controlTimeByPos[key] || 0) + dt;
+                this.currentPosition = null;
+              }
+              break;
+            }
+            case 'transition': {
+              g.transition.attempts += 1;
+              if (ev.outcome === 'success') g.transition.successes += 1;
+              // Update efficiency percentage for convenience
+              g.transitionEfficiencyPct = g.transition.attempts > 0 ? Math.round((g.transition.successes / g.transition.attempts) * 100) : 0;
+              break;
+            }
+            case 'submission_attempt': {
+              g.submission.attempts += 1; break;
+            }
+            case 'submission_result': {
+              if (ev.outcome === 'success') g.submission.successes += 1; break;
+            }
+            case 'escape_attempt': {
+              g.escape.attempts += 1; break;
+            }
+            case 'escape_result': {
+              if (ev.outcome === 'success') g.escape.successes += 1; break;
+            }
+            case 'sweep_attempt': {
+              g.sweep.attempts += 1; break;
+            }
+            case 'sweep_result': {
+              if (ev.outcome === 'success') g.sweep.successes += 1; break;
+            }
+            case 'pass_attempt': {
+              g.pass.attempts += 1; break;
+            }
+            case 'pass_result': {
+              if (ev.outcome === 'success') g.pass.successes += 1; break;
+            }
+            case 'scramble_start': {
+              g.scramble.attempts += 1; break;
+            }
+            case 'scramble_end': {
+              if (ev.winner === 'self') g.scramble.wins += 1; else if (ev.winner === 'opponent') g.scramble.losses += 1; break;
+            }
+          }
+        }
+      }
+    }
   }
   private updateSym(key: 'shoulderSym'|'kneeSym', value: number) {
     const s = this.rec[key] as SymmetryStats;

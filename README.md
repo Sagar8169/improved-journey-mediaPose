@@ -1,24 +1,24 @@
-# MediaPipe Pose Web Demo (Next.js)
+# MediaPose (Next.js + MediaPipe + MongoDB)
 
-A comprehensive pose detection web application built with Next.js 14, React 18, and MediaPipe Pose. This application provides real-time pose landmark detection, session tracking, and user authentication, all running entirely client-side in the browser.
+A production-ready pose training web app built with Next.js 14, React 18, and MediaPipe Pose. It provides real-time pose detection, live KPIs, and a secure server-backed authentication and session history with aggregated metrics persisted to MongoDB.
 
 ## Features
 
-- **Real-time Pose Detection**: Powered by MediaPipe Pose for accurate pose landmark detection
-- **Session Tracking**: Monitor pose detection sessions with detailed statistics
-- **User Authentication**: Built-in authentication system with account management
-- **Responsive Design**: Modern UI built with Tailwind CSS
-- **Client-side Processing**: No backend required - all processing happens in the browser
-- **TypeScript Support**: Full TypeScript implementation for better development experience
+- Real-time pose detection (MediaPipe Pose) with overlay and voice cues
+- Event-driven metrics pipeline v2: raw events in-memory; only aggregated report stored
+- Secure auth: JWT access + rotating httpOnly Secure refresh cookies; email verification (Resend)
+- Session history with 90-day TTL retention; paginated list and detail views
+- Live KPIs panel during drills; finalize posts aggregated report only
+- Responsive UI (Tailwind CSS) and full TypeScript codebase
 
 ## Technology Stack
 
-- **Frontend**: Next.js 14, React 18, TypeScript
-- **Styling**: Tailwind CSS
-- **Pose Detection**: MediaPipe Pose, Camera Utils, Drawing Utils
-- **State Management**: Zustand
-- **Build Tools**: PostCSS, Autoprefixer
-- **Deployment**: Vercel, Netlify support
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS
+- Pose Detection: MediaPipe Pose, Camera Utils, Drawing Utils
+- State: Zustand
+- Backend: Next.js API routes (Netlify/Vercel serverless)
+- Database: MongoDB Atlas
+- Email: Resend
 
 ## Prerequisites
 
@@ -64,17 +64,20 @@ npm start   # Starts the standalone Next.js server on port 3000
 
 ## Environment Variables
 
-Currently, no environment variables are required for basic functionality. For future database integration, you may need:
+Server features (auth, email verification, session persistence) require environment variables. See `ENVIRONMENT.md` for the full list. Minimum for local dev with persistence:
 
 ```bash
-# Copy and modify as needed
-cp .env.example .env.local
-
-# Example environment variables for database integration:
-# DATABASE_URL=your_database_connection_string
-# NEXTAUTH_SECRET=your_nextauth_secret
-# NEXTAUTH_URL=http://localhost:3000
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/rollmetric
+MONGODB_DB_NAME=rollmetric
+JWT_SECRET=your-256-bit-secret
+JWT_REFRESH_SECRET=another-256-bit-secret
+RESEND_API_KEY=re_xxx # optional for local dev if email not tested
+EMAIL_FROM=no-reply@yourdomain.com
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NODE_ENV=development
 ```
+
+You can still run the app without these to explore the UI, but session persistence and auth flows will be limited.
 
 ## Project Structure
 
@@ -100,21 +103,18 @@ cp .env.example .env.local
 
 ## Authentication System
 
-The application includes a built-in authentication system:
+Server-backed authentication with:
+- Signup + email verification (Resend)
+- Login issuing short-lived JWT access token and httpOnly Secure refresh cookie
+- Refresh with rotation and reuse detection; logout revokes refresh
+- Basic account overview and history pages
 
-- **Demo Account**: Email: `demo@jiujitsu.com`, Password: `demo123`
-- **Signup/Login**: Create new accounts or login with existing credentials
-- **Account Management**: Update user information and settings
-- **Session Persistence**: Maintains login state across browser sessions
+## Pose & Metrics Features
 
-**Note**: Current implementation uses in-memory storage. See [DEPLOYMENT.md](./DEPLOYMENT.md) for database integration options.
-
-## Pose Detection Features
-
-- **Real-time Processing**: Live pose detection from webcam feed
-- **Landmark Visualization**: Visual overlay of pose landmarks and connections
-- **Session Metrics**: Track detection accuracy, duration, and statistics
-- **Multiple Views**: Different visualization modes for pose analysis
+- Real-time processing and overlay of pose landmarks
+- Live KPIs: control time %, attempts/success, scrambles, intensity, reaction
+- Finalize builds an aggregated v2 `SessionReport` (schemaVersion=2)
+- Server stores `report` (canonical) and `summary`; raw events are never uploaded
 
 ## Development
 
@@ -188,27 +188,8 @@ For issues and questions:
 - Check the [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment-specific help
 - Review the troubleshooting section above
 
-## Session Report (Grappling)
+## Session Report (Grappling) — v2
 
-Each finalized session now includes a `report` JSON object designed for database/storage integration. Percentages are floats (0–100), counts are integers, scores are floats, arrays and maps as shown, and all times are seconds (float). If a metric cannot be computed from the current session data, it is set to `null` and an error is logged in `SessionRecord.errors`.
+Finalized sessions include a `report` JSON object (canonical) and `summary`. Raw events are not persisted. `METRICS_SCHEMA_VERSION = 2`.
 
-Shape overview:
-
-```
-report = {
-   corePositionalMetrics: {
-      positionalControlTimes: { position: percent },
-      escapes: { attempts, successPercent },
-      reversals: { count, successPercent },
-   },
-   guardMetrics: { guardRetentionPercent, sweepAttempts, sweepSuccessPercent, passingAttempts, guardPassPreventionPercent },
-   transitionMetrics: { transitionEfficiencyPercent, errorCounts: { failedTransition, lostGuard, positionalMistake } },
-   submissionMetrics: { submissionAttempts, submissionSuccessPercent, submissionChains, submissionDefenses },
-   scrambleMetrics: { scrambleFrequency, scrambleWinPercent, scrambleOutcomeImpact },
-   effortEnduranceMetrics: { rollingIntensityScore, fatigueCurve, enduranceIndicator, recoveryTimeBetweenRounds },
-   consistencyTrends: { sessionConsistencyRating, technicalVarietyIndex, positionalErrorTrends },
-   summary: { overallSessionScorecard, historicalPerformanceTrend, winLossRatioByPosition, reactionSpeed },
-}
-```
-
-Quick dev check: open `/api/session-metrics` to view an example response shape.
+Open `/api/session-metrics` to view an example response shape.

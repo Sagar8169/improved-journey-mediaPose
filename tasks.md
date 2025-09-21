@@ -17,7 +17,7 @@ This plan translates the approved design and requirements into concrete, depende
 |---|---|---|
 | 1 | Clarify production domains and CORS | Cookie domain/CORS allowlist agreed and documented |
 | 2 | Confirm Netlify adapter and payload limits | Chosen body size limits and adapter constraints documented |
-| 3 | Decide rawReport compression at rest | Compression policy finalized and documented |
+| 3 | Decide aggregated report compression | Compression policy finalized and documented |
 | 4 | Define password policy | Validated password rules for input validation and UI |
 | 5 | Approve email sender/templates | Resend sender + templates approved |
 | 6 | Confirm unverified-login policy | Policy finalized (allow login; restrict session endpoints) |
@@ -36,7 +36,7 @@ This plan translates the approved design and requirements into concrete, depende
 | 19 | Auth API: logout | Revoke refresh and clear cookie |
 | 20 | Auth API: resend-verification | Send new verification email (rate-limited) |
 | 21 | Sessions API: start | Create session stub and return sessionId |
-| 22 | Sessions API: finish | Validate/report, enforce size, persist, compute summary |
+| 22 | Sessions API: finish | Validate v2 aggregated payload, enforce size, persist report+summary |
 | 23 | Sessions API: list | Paginated session list for current user |
 | 24 | Sessions API: detail | Fetch single session (owner/admin) |
 | 25 | Data model: indexes & TTL | Unique email; sessions TTL 90 days created |

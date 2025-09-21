@@ -192,9 +192,11 @@ export default function DrillPage() {
     setRunning(true);
     if (!sessionActiveRef.current) {
       store.startSession(); // legacy simple summary
+      // Always start local tracking for live KPIs, even if not authenticated
+      store.startSessionTracking(currentUser?.email ?? 'guest', skillDerived.mc, mirror);
+      // If authenticated, also create a server-side session for persistence
       if (currentUser) {
         try {
-          // Start database session
           const sessionResponse = await sessions.start({
             drillType: 'pose-detection',
             deviceInfo: {
@@ -204,11 +206,8 @@ export default function DrillPage() {
             startAt: new Date().toISOString(),
           });
           setCurrentSessionId(sessionResponse.sessionId);
-          store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
         } catch (error) {
           console.error('Failed to start session:', error);
-          // Fall back to local tracking only
-          store.startSessionTracking(currentUser.email, skillDerived.mc, mirror);
         }
       }
       postureStartRef.current = store.postureIssues;
@@ -620,7 +619,7 @@ export default function DrillPage() {
 
           <div className="mt-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="bg-panel rounded-lg p-4 border border-accent/20 md:col-span-3">
-              <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">Live KPIs</h3>
+              <h3 className="text-sm font-semibold mb-3 tracking-wide text-brandText/70">key performance indicator</h3>
               {(() => {
                 const kpis = store.getLiveKPIs();
                 const pct = (num?: number, den?: number) => {

@@ -1,11 +1,11 @@
 # Implementation Decisions and Policies
 
-## Task 3: rawReport Compression
+## Task 3: Aggregated Report Compression
 **Decision**: Store as-is (no compression at rest)
 **Rationale**: 
 - Simplifies implementation and debugging
 - MongoDB compression at storage level handles efficiency
-- 2MB limit keeps individual reports manageable
+- 2MB limit keeps finish payload manageable
 - Can add compression later if needed
 
 ## Task 4: Password Policy

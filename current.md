@@ -38,44 +38,27 @@ Validation: UI pages, state stores, routing, and UX patterns covered; key streng
 
 ## Backend
 
-- API routes present
-  - `pages/api/health.ts`: Working GET health endpoint with uptime and memory details.
-  - `pages/api/session-metrics.ts`: Stub returns schema version and example report; no persistence.
+- API routes present and functional
+  - Auth suite: signup, login, logout, refresh, verify-email, resend-verification
+  - Sessions: start, finish (POST /api/sessions/[sessionId]), list, detail
+  - Health: uptime + memory + DB connectivity
+  - Admin: init-db to ensure indexes/TTL
 
-- Missing
-  - No auth/profile endpoints; no metrics persistence endpoints; no email endpoints.
-
-- Strengths
-  - Health endpoint suitable for basic monitoring.
-
-- Issues/risks
-  - Core backend features (auth, verification, persistence) are not implemented.
-
-Validation: Existing API routes enumerated; lack of functional business endpoints confirmed.
+- Summary
+  - Server-backed auth and session persistence to MongoDB are implemented.
+  - Email verification via Resend is wired.
 
 ---
 
 ## Authentication
 
 - Implementation
-  - `components/authStore.ts` (Zustand) maintains:
-    - In-memory users (seeded with Demo User) with plaintext passwords.
-    - `signup`, `login`, `logout`, `updateProfile`; generates a random token.
-    - Persists `{ email, token }` to `localStorage`; `hydrateSession(email, token)` accepts any token if user exists.
+  - Server-backed: bcrypt password hashing, JWT access tokens, rotating refresh cookies.
+  - Email verification flow; unverified users blocked from session endpoints.
+  - Client keeps access token in localStorage (for Authorization header) and relies on refresh cookie.
 
 - Guards and flows
-  - `RequireAuth.tsx` redirects to `/` when unauthenticated.
-  - `_app.tsx` rehydrates from `localStorage` and handles redirects after explicit auth events.
-
-- Strengths
-  - Simple client-only demo flow with good redirect behavior.
-
-- Issues/risks
-  - No hashing/JWT/NextAuth; token not validated; plaintext passwords.
-  - Users exist only in memory; signups are lost on hard reload.
-  - No server-side session checks; spoofable via devtools.
-
-Validation: Auth flow, persistence, and security posture described; main concerns called out.
+  - `RequireAuth.tsx` protects routes. Server middleware enforces verified email for session APIs.
 
 ---
 
@@ -93,34 +76,20 @@ Validation: Absence of code-level email verification confirmed.
 
 ## Database Connection
 
-- Status
-  - No database dependencies or usage found; no env-based DB config.
-  - All data is client memory; only a minimal auth tuple is persisted in `localStorage`.
-
-- Conclusion
-  - Not implemented.
-
-Validation: Verified via `package.json` and repository sources.
+- MongoDB Atlas via native driver; global client reused in serverless functions.
+- Collections: users, sessions, auditLogs; TTL index on sessions.createdAt (~90 days).
 
 ---
 
 ## Session History (per-user)
 
 - Implementation
-  - `usePoseStore.ts` tracks simple summaries and detailed `SessionRecord[]` via `SessionTracker` (`lib/metrics/SessionTracker.ts`).
-  - `SessionTracker` computes KPIs/flags and builds a structured `report` via `lib/metrics/report.ts` at finalize.
-  - `drill.tsx` starts tracking with `startSessionTracking(currentUser.email, ...)` and finalizes on session end.
-  - `components/sessions/SessionHistory.tsx` renders a table with expand/collapse and a "Hide Low Quality" filter.
+  - `SessionTracker` stores raw events in-memory only and computes an aggregated v2 `SessionReport` at finalize.
+  - `drill.tsx` posts { schemaVersion:2, report, summary } to the finish endpoint.
+  - `SessionHistory` prefers `report` and falls back to legacy fields.
 
 - Strengths
-  - Rich, well-structured data model and computed report JSON.
-  - Clear UI for history exploration and trends.
-
-- Issues/risks
-  - In-memory only; data lost on reload.
-  - History array is not filtered by `userId` in the UI, so multiple users in one runtime could see mixed records.
-
-Validation: Data flow from tracking to UI verified; gaps (persistence, per-user scoping) identified.
+  - Aggregated-only persistence avoids sensitive raw data; UI stays backward-compatible.
 
 ---
 
