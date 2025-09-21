@@ -49,6 +49,9 @@ export default function DrillPage() {
   const [samples, setSamples] = useState<any[]>([]);
   // Overlay toggle: allows user to enable/disable the pose skeleton overlay
   const [overlayEnabled, setOverlayEnabled] = useState(true);
+  // Keep overlay flag in a ref so onResults sees the latest value
+  const overlayEnabledRef = useRef(overlayEnabled);
+  useEffect(() => { overlayEnabledRef.current = overlayEnabled; }, [overlayEnabled]);
   // Technique suggestion popup state
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const suggestionTimeoutRef = useRef<number | null>(null);
@@ -356,7 +359,7 @@ export default function DrillPage() {
     if (!lms) { ctx.restore(); return; }
 
     // Draw skeleton overlay
-    if (overlayEnabled && drawUtilsRef.current) {
+    if (overlayEnabledRef.current && drawUtilsRef.current) {
       const { drawConnectors, drawLandmarks, POSE_CONNECTIONS } = drawUtilsRef.current;
   // Use brand accent + light landmarks for consistency with dark theme
   drawConnectors(ctx, lms, POSE_CONNECTIONS, { color: '#58A6FF', lineWidth: 3 });
@@ -467,7 +470,7 @@ export default function DrillPage() {
       if(!pt || val==null) return; const x = pt[0] * canvas.width; const y = pt[1]*canvas.height; ctx.fillStyle=color; ctx.font='12px sans-serif'; ctx.fillText(String(Math.round(val)), x+6, y-6);
     };
   const angleColor = '#58A6FF';
-  if (overlayEnabled) {
+  if (overlayEnabledRef.current) {
     drawAngle(lElbow, elbowL, angleColor);
     drawAngle(rElbow, elbowR, angleColor);
     drawAngle(lKnee, kneeL, angleColor);
