@@ -47,6 +47,8 @@ export default function DrillPage() {
   const [avgVis, setAvgVis] = useState<number | null>(null);
   const [posture, setPosture] = useState('—');
   const [samples, setSamples] = useState<any[]>([]);
+  // Overlay toggle: allows user to enable/disable the pose skeleton overlay
+  const [overlayEnabled, setOverlayEnabled] = useState(true);
   // Technique suggestion popup state
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const suggestionTimeoutRef = useRef<number | null>(null);
@@ -340,7 +342,7 @@ export default function DrillPage() {
     if (!lms) { ctx.restore(); return; }
 
     // Draw skeleton overlay
-    if (drawUtilsRef.current) {
+    if (overlayEnabled && drawUtilsRef.current) {
       const { drawConnectors, drawLandmarks, POSE_CONNECTIONS } = drawUtilsRef.current;
   // Use brand accent + light landmarks for consistency with dark theme
   drawConnectors(ctx, lms, POSE_CONNECTIONS, { color: '#58A6FF', lineWidth: 3 });
@@ -451,10 +453,12 @@ export default function DrillPage() {
       if(!pt || val==null) return; const x = pt[0] * canvas.width; const y = pt[1]*canvas.height; ctx.fillStyle=color; ctx.font='12px sans-serif'; ctx.fillText(String(Math.round(val)), x+6, y-6);
     };
   const angleColor = '#58A6FF';
-  drawAngle(lElbow, elbowL, angleColor);
-  drawAngle(rElbow, elbowR, angleColor);
-  drawAngle(lKnee, kneeL, angleColor);
-  drawAngle(rKnee, kneeR, angleColor);
+  if (overlayEnabled) {
+    drawAngle(lElbow, elbowL, angleColor);
+    drawAngle(rElbow, elbowR, angleColor);
+    drawAngle(lKnee, kneeL, angleColor);
+    drawAngle(rKnee, kneeR, angleColor);
+  }
 
     ctx.restore();
 
@@ -582,7 +586,7 @@ export default function DrillPage() {
 
   return (
     <RequireAuth>
-    <Layout>
+  <Layout>
       <main className="container-mobile flex flex-col items-center bg-bg text-brandText min-h-[100svh] py-4 sm:py-6">
         <div className="w-full max-w-4xl flex flex-col items-center">
           {/* Top Status Bar: pose name on left, camera toggle icon on right */}
@@ -716,6 +720,9 @@ export default function DrillPage() {
                     {/* Mirror flips the entire canvas context horizontally; drawing code uses raw landmark coords to avoid double flips */}
                     <label className="flex items-center justify-between gap-4">Mirror
                       <input aria-label="Mirror video horizontally" type="checkbox" className="accent-accent" checked={mirror} onChange={e=>setMirror(e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between gap-4">Pose Overlay
+                      <input aria-label="Show pose overlay" type="checkbox" className="accent-accent" checked={overlayEnabled} onChange={e=> setOverlayEnabled(e.target.checked)} />
                     </label>
                     <label className="flex items-center justify-between gap-4">Skill Level
                       <select value={skill} onChange={e=> setSkill(e.target.value as any)} className="bg-panel/60 rounded px-2 py-1 border border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/60 w-40">

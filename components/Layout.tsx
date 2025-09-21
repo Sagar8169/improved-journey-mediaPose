@@ -59,7 +59,6 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </header>
       <main className="flex-1">{children}</main>
-      <footer className="py-6 text-center text-xs text-neutral-500 border-t border-panel safe-bottom">Local-first prototype.</footer>
     </div>
   );
 }
