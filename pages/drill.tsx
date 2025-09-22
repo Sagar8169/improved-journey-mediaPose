@@ -51,7 +51,15 @@ export default function DrillPage() {
   const [overlayEnabled, setOverlayEnabled] = useState(true);
   // Keep overlay flag in a ref so onResults sees the latest value
   const overlayEnabledRef = useRef(overlayEnabled);
-  useEffect(() => { overlayEnabledRef.current = overlayEnabled; }, [overlayEnabled]);
+  useEffect(() => {
+    overlayEnabledRef.current = overlayEnabled;
+    // Keep the canvas' visibility in sync with the toggle so the overlay
+    // instantly hides/shows regardless of draw timing
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.style.visibility = overlayEnabled ? 'visible' : 'hidden';
+    }
+  }, [overlayEnabled]);
   // Technique suggestion popup state
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const suggestionTimeoutRef = useRef<number | null>(null);
@@ -184,7 +192,7 @@ export default function DrillPage() {
       modulesLoadedRef.current = true;
     } else {
       // update model complexity if changed during pause
-  try { applyPoseOptions(poseRef.current); } catch {}
+      try { applyPoseOptions(poseRef.current); } catch {}
     }
     // Always recreate camera after pause
     const { Camera } = (await import('@mediapipe/camera_utils')) as any;
@@ -197,6 +205,9 @@ export default function DrillPage() {
     cam.start();
     setRunning(true);
     if (!sessionActiveRef.current) {
+      // Ensure overlay is enabled by default when starting a new session
+      setOverlayEnabled(true);
+
       store.startSession(); // legacy simple summary
       // Always start local tracking for live KPIs, even if not authenticated
       store.startSessionTracking(currentUser?.email ?? 'guest', skillDerived.mc, mirror);
@@ -638,10 +649,15 @@ export default function DrillPage() {
             <video
               ref={videoRef}
               playsInline
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover z-0"
               style={{ transform: mirror ? 'scaleX(-1)' : 'none', transformOrigin: 'center' }}
             />
-            <canvas ref={canvasRef} className="absolute pointer-events-none z-10" />
+            <canvas
+              ref={canvasRef}
+              className="absolute pointer-events-none z-10"
+              // Keep visibility in sync so overlay truly hides when toggled off
+              style={{ visibility: overlayEnabled ? 'visible' : 'hidden' }}
+            />
             {suggestion && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                 <div className="bg-black/60 px-8 py-6 rounded-2xl border border-accent/40 shadow-2xl max-w-[80%]">
