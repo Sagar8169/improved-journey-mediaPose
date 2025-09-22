@@ -171,67 +171,77 @@ export default function DrillPage() {
       if (!track) return;
       const label = track.label || '';
       const settings = (track.getSettings?.() ?? {}) as any;
-      // Prefer actual facing reported by the track, fallback to assumed/state
       const actualFacing = (settings.facingMode as string) as 'user'|'environment' | undefined;
       const facing: 'user'|'environment' = (actualFacing === 'environment' || actualFacing === 'user')
         ? actualFacing
         : (assumedFacing ?? cameraFacing);
       const vids = await getVideoDevices();
-      // Match device by label (labels are available after permission)
       const match = vids.find(d => d.label === label) ?? vids.find(d => d.deviceId === (settings.deviceId as any));
       if (match) {
         cameraMapRef.current.lastActive = match.deviceId;
         if (facing === 'user') cameraMapRef.current.user = match.deviceId;
         else cameraMapRef.current.environment = match.deviceId;
       }
-      // Keep UI state aligned with actual facing if the browser overruled us
-      if (actualFacing === 'user' || actualFacing === 'environment') {
-        if (actualFacing !== cameraFacing) setCameraFacing(actualFacing);
-      }
+      // Do not override UI state based on browser-reported facing.
     } catch {/* no-op */}
   };
 
-  // Start camera/pose pipeline. Optional overrides for facing and deviceId.
+  // Pick deviceId for a given facing (simple heuristic)
+  const pickDeviceIdForFacing = async (facing: 'user'|'environment'): Promise<string | undefined> => {
+    const devices = await getVideoDevices();
+    if (!devices.length) return undefined;
+    const rx = facing === 'environment' ? /back|rear|environment/i : /front|user|face|webcam/i;
+    const labeled = devices.find(d => rx.test(d.label));
+    if (labeled) return labeled.deviceId;
+    // Fallback: pick a different device than the current one if possible
+    const currentId = streamRef.current?.getVideoTracks?.()[0]?.getSettings?.().deviceId as string | undefined;
+    const other = devices.find(d => d.deviceId !== currentId);
+    return (other ?? devices[0])?.deviceId;
+  };
+
+  // Start camera/pose pipeline. If deviceIdOverride is provided, use it strictly (no fallback).
   const start = async (facingOverride?: 'user'|'environment', deviceIdOverride?: string) => {
     if (running) return;
     const video = videoRef.current!;
     try {
       const desiredFacing = facingOverride ?? cameraFacing;
-      const preferredDeviceId = deviceIdOverride ?? cameraMapRef.current[desiredFacing];
-
-      // Build constraints, preferring exact deviceId when known
       let stream: MediaStream | null = null;
-      if (preferredDeviceId) {
+
+      if (deviceIdOverride) {
+        // Strict: only this deviceId
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: preferredDeviceId } } as any,
+            video: { deviceId: { exact: deviceIdOverride } } as any,
             audio: false,
           });
         } catch (e) {
-          console.warn('Exact deviceId failed, falling back to facingMode:', preferredDeviceId, e);
+          console.error('Failed to open selected camera deviceId', deviceIdOverride, e);
+          setCameraNotice('Could not open the selected camera. Please check permissions and try again.');
+          return;
         }
-      }
-      if (!stream) {
-        // Try exact facing first (so it fails fast if unavailable)
+      } else {
+        // Initial start or no known deviceId: try facingMode
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { exact: desiredFacing } } as any,
             audio: false,
           });
-        } catch (errExact) {
-          // Then try ideal facing (best-effort)
+        } catch {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: desiredFacing } as any,
               audio: false,
             });
-          } catch (errIdeal) {
-            // Finally, generic fallback
-            console.warn('Facing constraints failed, using generic video.', { errExact, errIdeal });
+          } catch {
+            // Last resort
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           }
         }
       }
+
+      // Detach and attach cleanly
+      try { video.pause(); } catch {}
+      try { (video as any).srcObject = null; } catch {}
       streamRef.current = stream!;
     } catch (e) {
       console.error('camera error', e);
@@ -242,7 +252,7 @@ export default function DrillPage() {
     await video.play();
 
     if (!modulesLoadedRef.current || !poseRef.current) {
-      const [poseModule, cameraModule, drawingModule] = await loadPoseStack();
+      const [poseModule, _cameraModule, drawingModule] = await loadPoseStack();
       const { Pose, POSE_CONNECTIONS } = poseModule;
       const { drawConnectors, drawLandmarks } = drawingModule;
       drawUtilsRef.current = { drawConnectors, drawLandmarks, POSE_CONNECTIONS };
@@ -258,10 +268,9 @@ export default function DrillPage() {
       poseRef.current = p;
       modulesLoadedRef.current = true;
     } else {
-      try { applyPoseOptions(poseRef.current); } catch {}
+      applyPoseOptions(poseRef.current);
     }
 
-    // Always recreate camera after pause
     const { Camera } = (await import('@mediapipe/camera_utils')) as any;
     const cam = new Camera(video, {
       onFrame: async () => { if (poseRef.current) await poseRef.current.send({ image: video }); },
@@ -271,7 +280,6 @@ export default function DrillPage() {
     cameraRef.current = cam;
     cam.start();
 
-    // Remember which device/facing actually got activated for sticky toggling
     await rememberActiveDevice(facingOverride);
 
     if (canvasRef.current) {
@@ -370,69 +378,34 @@ export default function DrillPage() {
     }
   };
 
-  // Toggle between front/back cameras. If running, restart stream with selected deviceId.
+  // Toggle between front/back cameras. Restart strictly with the chosen deviceId.
   const toggleCameraFacing = async () => {
     if (cameraSwitchBlocked || switchingRef.current) return;
     switchingRef.current = true;
     try {
-      console.log('Camera toggle requested. Current facing:', cameraFacing);
+      const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
 
       const devices = await getVideoDevices();
       if (devices.length <= 1) {
-        setCameraNotice('No other camera was found on this device. Please reload the page and try again.');
+        setCameraNotice('No other camera was found on this device.');
         setCameraSwitchBlocked(true);
-        console.warn('Only one camera found, blocking switch');
         return;
       }
 
-      const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
-
-      // Determine current deviceId from active stream (by track label)
-      let currentDeviceId: string | undefined;
-      if (streamRef.current) {
-        const track = streamRef.current.getVideoTracks()[0];
-        const label = track?.label || '';
-        const match = devices.find(d => d.label === label);
-        currentDeviceId = match?.deviceId;
-      }
-
-      // Prefer a previously remembered deviceId for the next facing
-      let targetDeviceId = cameraMapRef.current[next];
-
-      // If unknown, choose by label heuristics or pick the "other" device
+      const targetDeviceId = await pickDeviceIdForFacing(next);
       if (!targetDeviceId) {
-        const back = devices.find(d => /back|rear|environment/i.test(d.label));
-        const front = devices.find(d => /front|user|face|webcam/i.test(d.label));
-        targetDeviceId = next === 'environment'
-          ? (back?.deviceId ?? devices.find(d => d.deviceId !== currentDeviceId)?.deviceId)
-          : (front?.deviceId ?? devices.find(d => d.deviceId !== currentDeviceId)?.deviceId);
-      }
-
-      if (!targetDeviceId) {
-        // As a last resort, pick any other device
-        targetDeviceId = devices.find(d => d.deviceId !== currentDeviceId)?.deviceId;
-      }
-
-      if (!targetDeviceId) {
-        setCameraNotice('Could not select the other camera. Please reload the page and try again.');
-        console.warn('No target camera deviceId found');
+        setCameraNotice('Could not select the other camera.');
         return;
       }
 
-      // Update state immediately for UI
+      // Reflect user intent in UI and mirror (front mirrored, back not)
       setCameraFacing(next);
+      setMirror(next === 'user');
 
-      // Gracefully stop then restart with the chosen deviceId (await to avoid race)
-      try {
-        await stop(false);
-      } catch (e) {
-        console.warn('Error stopping camera:', e);
-      }
-      console.log('Restarting camera with deviceId:', targetDeviceId, 'facing:', next);
-      await start(next, targetDeviceId);
-      console.log('Camera restart complete');
+      await stop(false);
+      await start(next, targetDeviceId); // strict (no fallback)
     } catch (e) {
-      console.warn('enumerateDevices or toggle failed', e);
+      console.warn('Camera toggle failed', e);
     } finally {
       switchingRef.current = false;
     }
