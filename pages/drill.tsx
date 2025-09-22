@@ -81,6 +81,10 @@ export default function DrillPage() {
   const poseRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Map known camera deviceIds for stable toggling between front/back
+  const cameraMapRef = useRef<{ user?: string; environment?: string; lastActive?: string }>({});
+  // Prevent concurrent switches
+  const switchingRef = useRef(false);
   const drawUtilsRef = useRef<{ drawConnectors: any; drawLandmarks: any; POSE_CONNECTIONS: any }|null>(null);
   const lastPostureIssueTs = useRef<number>(0);
   const modulesLoadedRef = useRef(false);
@@ -152,36 +156,94 @@ export default function DrillPage() {
     return deg;
   };
 
-  // Start camera/pose pipeline. Optional facing override for internal restarts.
-  const start = async (facingOverride?: 'user'|'environment') => {
+  // Helper: enumerate video inputs
+  const getVideoDevices = async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'videoinput');
+  };
+
+  // Helper: remember which physical device is currently active (by label -> deviceId)
+  const rememberActiveDevice = async (assumedFacing?: 'user'|'environment') => {
+    try {
+      const stream = streamRef.current;
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      const label = track.label || '';
+      const settings = (track.getSettings?.() ?? {}) as any;
+      // Prefer actual facing reported by the track, fallback to assumed/state
+      const actualFacing = (settings.facingMode as string) as 'user'|'environment' | undefined;
+      const facing: 'user'|'environment' = (actualFacing === 'environment' || actualFacing === 'user')
+        ? actualFacing
+        : (assumedFacing ?? cameraFacing);
+      const vids = await getVideoDevices();
+      // Match device by label (labels are available after permission)
+      const match = vids.find(d => d.label === label) ?? vids.find(d => d.deviceId === (settings.deviceId as any));
+      if (match) {
+        cameraMapRef.current.lastActive = match.deviceId;
+        if (facing === 'user') cameraMapRef.current.user = match.deviceId;
+        else cameraMapRef.current.environment = match.deviceId;
+      }
+      // Keep UI state aligned with actual facing if the browser overruled us
+      if (actualFacing === 'user' || actualFacing === 'environment') {
+        if (actualFacing !== cameraFacing) setCameraFacing(actualFacing);
+      }
+    } catch {/* no-op */}
+  };
+
+  // Start camera/pose pipeline. Optional overrides for facing and deviceId.
+  const start = async (facingOverride?: 'user'|'environment', deviceIdOverride?: string) => {
     if (running) return;
     const video = videoRef.current!;
     try {
       const desiredFacing = facingOverride ?? cameraFacing;
-      // Prefer requested facing. If it fails, try alternate, then generic fallback.
-      try {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: desiredFacing } as any, audio: false });
-      } catch (err1) {
-        const alt: 'user'|'environment' = desiredFacing === 'user' ? 'environment' : 'user';
+      const preferredDeviceId = deviceIdOverride ?? cameraMapRef.current[desiredFacing];
+
+      // Build constraints, preferring exact deviceId when known
+      let stream: MediaStream | null = null;
+      if (preferredDeviceId) {
         try {
-          console.warn('Preferred camera failed, trying alternate:', alt, err1);
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: alt } as any, audio: false });
-          setCameraFacing(alt);
-        } catch (err2) {
-          console.warn('Alternate camera failed, trying default constraints', err2);
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: preferredDeviceId } } as any,
+            audio: false,
+          });
+        } catch (e) {
+          console.warn('Exact deviceId failed, falling back to facingMode:', preferredDeviceId, e);
         }
       }
+      if (!stream) {
+        // Try exact facing first (so it fails fast if unavailable)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: desiredFacing } } as any,
+            audio: false,
+          });
+        } catch (errExact) {
+          // Then try ideal facing (best-effort)
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: desiredFacing } as any,
+              audio: false,
+            });
+          } catch (errIdeal) {
+            // Finally, generic fallback
+            console.warn('Facing constraints failed, using generic video.', { errExact, errIdeal });
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }
+        }
+      }
+      streamRef.current = stream!;
     } catch (e) {
       console.error('camera error', e);
       return;
     }
+
     video.srcObject = streamRef.current;
     await video.play();
+
     if (!modulesLoadedRef.current || !poseRef.current) {
       const [poseModule, cameraModule, drawingModule] = await loadPoseStack();
       const { Pose, POSE_CONNECTIONS } = poseModule;
-      const { Camera } = cameraModule as any;
       const { drawConnectors, drawLandmarks } = drawingModule;
       drawUtilsRef.current = { drawConnectors, drawLandmarks, POSE_CONNECTIONS };
       const p = new Pose({ locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
@@ -196,9 +258,9 @@ export default function DrillPage() {
       poseRef.current = p;
       modulesLoadedRef.current = true;
     } else {
-      // update model complexity if changed during pause
       try { applyPoseOptions(poseRef.current); } catch {}
     }
+
     // Always recreate camera after pause
     const { Camera } = (await import('@mediapipe/camera_utils')) as any;
     const cam = new Camera(video, {
@@ -209,20 +271,18 @@ export default function DrillPage() {
     cameraRef.current = cam;
     cam.start();
 
-    // Ensure the canvas becomes visible immediately if the toggle is on
+    // Remember which device/facing actually got activated for sticky toggling
+    await rememberActiveDevice(facingOverride);
+
     if (canvasRef.current) {
       canvasRef.current.style.visibility = overlayEnabledRef.current ? 'visible' : 'hidden';
     }
 
     setRunning(true);
     if (!sessionActiveRef.current) {
-      // Ensure overlay is enabled by default when starting a new session
       setOverlayEnabled(true);
-
-      store.startSession(); // legacy simple summary
-      // Always start local tracking for live KPIs, even if not authenticated
+      store.startSession();
       store.startSessionTracking(currentUser?.email ?? 'guest', skillDerived.mc, mirror);
-      // If authenticated, also create a server-side session for persistence
       if (currentUser) {
         try {
           const sessionResponse = await sessions.start({
@@ -310,44 +370,71 @@ export default function DrillPage() {
     }
   };
 
-  // Toggle between front/back cameras. If running, restart stream with new facing.
+  // Toggle between front/back cameras. If running, restart stream with selected deviceId.
   const toggleCameraFacing = async () => {
-    if (cameraSwitchBlocked) return;
-    
-    console.log('Camera toggle requested. Current facing:', cameraFacing);
-    
-    // Check available cameras before attempting to switch
+    if (cameraSwitchBlocked || switchingRef.current) return;
+    switchingRef.current = true;
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter(d => d.kind === 'videoinput');
-      console.log('Available video devices:', videoInputs.length, videoInputs);
-      
-      if (videoInputs.length <= 1) {
+      console.log('Camera toggle requested. Current facing:', cameraFacing);
+
+      const devices = await getVideoDevices();
+      if (devices.length <= 1) {
         setCameraNotice('No other camera was found on this device. Please reload the page and try again.');
         setCameraSwitchBlocked(true);
         console.warn('Only one camera found, blocking switch');
         return;
       }
-    } catch (e) {
-      // If enumeration fails, proceed with existing toggle logic as a best-effort
-      console.warn('enumerateDevices failed; proceeding with toggle', e);
-    }
-    
-    const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
-    console.log('Switching camera to:', next);
-    setCameraFacing(next);
-    
-    // Do not auto-toggle mirror; keep user preference stable across camera changes.
-    if (running) {
-      // Gracefully stop without tearing down Pose, then restart with the next facing.
-      try { 
-        console.log('Restarting camera with new facing...');
-        stop(false); 
+
+      const next: 'user'|'environment' = cameraFacing === 'user' ? 'environment' : 'user';
+
+      // Determine current deviceId from active stream (by track label)
+      let currentDeviceId: string | undefined;
+      if (streamRef.current) {
+        const track = streamRef.current.getVideoTracks()[0];
+        const label = track?.label || '';
+        const match = devices.find(d => d.label === label);
+        currentDeviceId = match?.deviceId;
+      }
+
+      // Prefer a previously remembered deviceId for the next facing
+      let targetDeviceId = cameraMapRef.current[next];
+
+      // If unknown, choose by label heuristics or pick the "other" device
+      if (!targetDeviceId) {
+        const back = devices.find(d => /back|rear|environment/i.test(d.label));
+        const front = devices.find(d => /front|user|face|webcam/i.test(d.label));
+        targetDeviceId = next === 'environment'
+          ? (back?.deviceId ?? devices.find(d => d.deviceId !== currentDeviceId)?.deviceId)
+          : (front?.deviceId ?? devices.find(d => d.deviceId !== currentDeviceId)?.deviceId);
+      }
+
+      if (!targetDeviceId) {
+        // As a last resort, pick any other device
+        targetDeviceId = devices.find(d => d.deviceId !== currentDeviceId)?.deviceId;
+      }
+
+      if (!targetDeviceId) {
+        setCameraNotice('Could not select the other camera. Please reload the page and try again.');
+        console.warn('No target camera deviceId found');
+        return;
+      }
+
+      // Update state immediately for UI
+      setCameraFacing(next);
+
+      // Gracefully stop then restart with the chosen deviceId (await to avoid race)
+      try {
+        await stop(false);
       } catch (e) {
         console.warn('Error stopping camera:', e);
       }
-      await start(next);
+      console.log('Restarting camera with deviceId:', targetDeviceId, 'facing:', next);
+      await start(next, targetDeviceId);
       console.log('Camera restart complete');
+    } catch (e) {
+      console.warn('enumerateDevices or toggle failed', e);
+    } finally {
+      switchingRef.current = false;
     }
   };
 
