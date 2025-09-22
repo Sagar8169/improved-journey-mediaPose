@@ -53,18 +53,18 @@ export default function DrillPage() {
   const overlayEnabledRef = useRef(overlayEnabled);
   useEffect(() => {
     overlayEnabledRef.current = overlayEnabled;
-    // Keep the canvas' visibility in sync with the toggle so the overlay
-    // instantly hides/shows regardless of draw timing
     const canvas = canvasRef.current;
+    const visible = overlayEnabled && running;
     if (canvas) {
-      canvas.style.visibility = overlayEnabled ? 'visible' : 'hidden';
-      // Avoid ghost frames when turning overlay off
-      if (!overlayEnabled) {
+      // Sync layer visibility with both toggle and running state
+      canvas.style.visibility = visible ? 'visible' : 'hidden';
+      // Avoid ghost frames when hidden
+      if (!visible) {
         const ctx = canvas.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-  }, [overlayEnabled]);
+  }, [overlayEnabled, running]);
   // Technique suggestion popup state
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const suggestionTimeoutRef = useRef<number | null>(null);
@@ -208,6 +208,12 @@ export default function DrillPage() {
     });
     cameraRef.current = cam;
     cam.start();
+
+    // Ensure the canvas becomes visible immediately if the toggle is on
+    if (canvasRef.current) {
+      canvasRef.current.style.visibility = overlayEnabledRef.current ? 'visible' : 'hidden';
+    }
+
     setRunning(true);
     if (!sessionActiveRef.current) {
       // Ensure overlay is enabled by default when starting a new session
@@ -249,6 +255,15 @@ export default function DrillPage() {
     }
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
+
+    // Hide and clear overlay immediately on stop to avoid ghost drawings on black screen
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.visibility = 'hidden';
+    }
+
     setRunning(false);
     if (final && sessionActiveRef.current) {
       // End-of-round voice cue
@@ -363,15 +378,15 @@ export default function DrillPage() {
     // Size and position canvas to match the displayed video box
     if (canvas.width !== dw) canvas.width = dw;
     if (canvas.height !== dh) canvas.height = dh;
-  const cStyle = canvas.style as CSSStyleDeclaration;
-  cStyle.position = 'absolute';
-  cStyle.left = `${ox}px`;
-  cStyle.top = `${oy}px`;
-  cStyle.width = `${dw}px`;
-  cStyle.height = `${dh}px`;
-  cStyle.zIndex = '10'; // ensure above <video>
-  cStyle.pointerEvents = 'none';
-  cStyle.visibility = overlayEnabledRef.current ? 'visible' : 'hidden';
+    const cStyle = canvas.style as CSSStyleDeclaration;
+    cStyle.position = 'absolute';
+    cStyle.left = `${ox}px`;
+    cStyle.top = `${oy}px`;
+    cStyle.width = `${dw}px`;
+    cStyle.height = `${dh}px`;
+    cStyle.zIndex = '10'; // ensure above <video>
+    cStyle.pointerEvents = 'none';
+    cStyle.visibility = overlayEnabledRef.current ? 'visible' : 'hidden';
 
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -662,8 +677,8 @@ export default function DrillPage() {
             <canvas
               ref={canvasRef}
               className="absolute pointer-events-none z-10"
-              // Keep visibility in sync so overlay truly hides when toggled off
-              style={{ visibility: overlayEnabled ? 'visible' : 'hidden' }}
+              // Visible only when running and toggle is ON
+              style={{ visibility: overlayEnabled && running ? 'visible' : 'hidden' }}
             />
             {suggestion && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
