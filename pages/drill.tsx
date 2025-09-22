@@ -58,6 +58,11 @@ export default function DrillPage() {
     const canvas = canvasRef.current;
     if (canvas) {
       canvas.style.visibility = overlayEnabled ? 'visible' : 'hidden';
+      // Avoid ghost frames when turning overlay off
+      if (!overlayEnabled) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
     }
   }, [overlayEnabled]);
   // Technique suggestion popup state
@@ -358,13 +363,15 @@ export default function DrillPage() {
     // Size and position canvas to match the displayed video box
     if (canvas.width !== dw) canvas.width = dw;
     if (canvas.height !== dh) canvas.height = dh;
-    const cStyle = canvas.style as CSSStyleDeclaration;
-    cStyle.position = 'absolute';
-    cStyle.left = `${ox}px`;
-    cStyle.top = `${oy}px`;
-    cStyle.width = `${dw}px`;
-    cStyle.height = `${dh}px`;
-    cStyle.zIndex = '10'; // ensure above <video>
+  const cStyle = canvas.style as CSSStyleDeclaration;
+  cStyle.position = 'absolute';
+  cStyle.left = `${ox}px`;
+  cStyle.top = `${oy}px`;
+  cStyle.width = `${dw}px`;
+  cStyle.height = `${dh}px`;
+  cStyle.zIndex = '10'; // ensure above <video>
+  cStyle.pointerEvents = 'none';
+  cStyle.visibility = overlayEnabledRef.current ? 'visible' : 'hidden';
 
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
